@@ -18,10 +18,6 @@
 </head>
 <body>
 
-    <audio id="silent-audio" loop style="display:none;">
-        <source src="data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjIwLjEwMAAAAAAAAAAAAAAA//oeEsAAAAAAAASwgAAAAEAAGiAAAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//oeEsAA1gAAASwgAAAAEAAGiAAAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//oeEsAA1gAAASwgAAAAEAAGiAAAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq" type="audio/mpeg">
-    </audio>
-
     <div id="loading-screen">
         <img src="logo.png" id="loading-logo" onerror="this.style.display='none'">
         <div class="loading-text">SYSTEM INITIALIZED</div>
@@ -37,6 +33,11 @@
             <div id="top-btn-coach" class="top-nav-item hidden" onclick="window.loadAdminUsers(); window.switchTab('admin-view');">
                 <span class="top-icon">🛡️</span>
                 <span class="top-label" style="color:#ffaa00;">COACH</span>
+            </div>
+
+            <div id="top-btn-ranking" class="top-nav-item hidden" onclick="window.loadRankingView()">
+                <span class="top-icon">🏆</span>
+                <span class="top-label">RANK</span>
             </div>
 
             <div id="top-btn-profile" class="top-nav-item" onclick="window.switchTab('profile-view')">
@@ -280,6 +281,15 @@
                 <div style="display:flex; justify-content:space-between;">
                     <span>Pantalla Activa</span><label class="switch"><input type="checkbox" id="cfg-wake" checked><span class="slider"></span></label>
                 </div>
+
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; border-top:1px solid #333; padding-top:10px;">
+                    <div>
+                        <span>🏆 Participar en Ranking</span><br>
+                        <small style="color:#666; font-size:0.65rem;">Tu nombre y Kg serán públicos</small>
+                    </div>
+                    <label class="switch"><input type="checkbox" id="cfg-ranking" onchange="window.toggleRankingOptIn(this.checked)"><span class="slider"></span></label>
+                </div>
+
                 <button class="btn-outline" style="margin-top:15px;" onclick="window.saveConfig()">GUARDAR AJUSTES</button>
             </div>
 
@@ -287,34 +297,33 @@
         </section>
 
         <section id="workout-view" class="view-container">
-            <div style="
-        display:flex; 
-        justify-content:space-between; 
-        align-items:center; 
-        position:fixed;              /* CAMBIO: De sticky a fixed */
-        top: calc(var(--header-height) + var(--safe-top)); /* Se pega justo debajo del header */
-        left: 0; 
-        width: 100%; 
-        background:var(--bg-color); 
-        z-index:4000; 
-        padding: 10px 15px;          /* Relleno interno */
-        border-bottom:1px solid #222;
-        height: 70px;                /* Altura forzada para calcular el empuje */
-    ">
-        <button onclick="window.switchTab('routines-view')" style="background:none; border:none; color:#666; font-size:1.5rem;">✕</button>
-        <div style="text-align:center;">
-            <span style="font-size:0.6rem; color:#666;">TIEMPO</span><br>
-            <span id="mini-timer" style="color:var(--accent-color); font-weight:bold;">00:00</span>
-        </div>
-        <div style="display:flex; gap:10px; align-items:center;">
-            <button class="btn-danger btn-small" style="margin:0; width:40px; height:40px; display:flex; align-items:center; justify-content:center; border-radius:8px;" onclick="window.cancelWorkout()">🗑️</button>
-            <button class="btn-small btn" style="margin:0;" onclick="window.promptRPE()">TERMINAR</button>
-        </div>
-    </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; position:fixed; top: calc(var(--header-height) + var(--safe-top)); left: 0; width: 100%; background:var(--bg-color); z-index:4000; padding: 10px 15px; border-bottom:1px solid #222; height: 70px;">
+                <button onclick="window.switchTab('routines-view')" style="background:none; border:none; color:#666; font-size:1.5rem;">✕</button>
+                <div style="text-align:center;">
+                    <span style="font-size:0.6rem; color:#666;">TIEMPO</span><br>
+                    <span id="mini-timer" style="color:var(--accent-color); font-weight:bold;">00:00</span>
+                </div>
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <button class="btn-danger btn-small" style="margin:0; width:40px; height:40px; display:flex; align-items:center; justify-content:center; border-radius:8px;" onclick="window.cancelWorkout()">🗑️</button>
+                    <button class="btn-small btn" style="margin:0;" onclick="window.promptRPE()">TERMINAR</button>
+                </div>
+            </div>
 
-    <div style="margin-top: 80px;"> <h2 id="workout-title" style="margin-bottom:20px;">Entreno</h2>
-        <div id="workout-exercises"></div>
-    </div>
+            <div style="margin-top: 80px;"> <h2 id="workout-title" style="margin-bottom:20px;">Entreno</h2>
+                <div id="workout-exercises"></div>
+            </div>
+        </section>
+
+        <section id="ranking-view" class="view-container">
+            <div style="text-align:center; margin-bottom:20px;">
+                <h2 style="color:var(--accent-color);">HALL OF FAME</h2>
+                <p style="color:#888; font-size:0.8rem;">Atletas más constantes (Tonelaje Total)</p>
+            </div>
+            <div id="ranking-list"></div>
+            <div class="tip-box" style="margin-top:20px;">
+                💡 Solo aparecen los usuarios que han activado "Participar en Ranking" en su perfil.
+            </div>
+            <button class="btn-outline" onclick="window.switchTab('profile-view')">MI PERFIL</button>
         </section>
 
         <section id="admin-view" class="view-container">
@@ -477,25 +486,25 @@
     </main>
 
     <div id="modal-timer" class="modal">
-    <div class="modal-content timer-content">
-        <h3 style="color:var(--text-dim); letter-spacing:2px; font-size:0.9rem; margin-bottom:15px;">RECUPERACIÓN</h3>
-        
-        <div class="timer-circle-container">
-            <svg class="timer-svg" width="200" height="200" viewBox="0 0 200 200">
-                <circle class="timer-bg-ring" cx="100" cy="100" r="90" fill="none" stroke="#222" stroke-width="12"></circle>
-                <circle id="timer-progress-ring" class="timer-progress-ring" cx="100" cy="100" r="90" fill="none" stroke="var(--accent-color)" stroke-width="12" stroke-linecap="round" 
-                        stroke-dasharray="565" stroke-dashoffset="0" transform="rotate(-90 100 100)"></circle>
-            </svg>
-            <div id="timer-display" class="timer-number">60</div>
-        </div>
+        <div class="modal-content timer-content">
+            <h3 style="color:var(--text-dim); letter-spacing:2px; font-size:0.9rem; margin-bottom:15px;">RECUPERACIÓN</h3>
+            
+            <div class="timer-circle-container">
+                <svg class="timer-svg" width="200" height="200" viewBox="0 0 200 200">
+                    <circle class="timer-bg-ring" cx="100" cy="100" r="90" fill="none" stroke="#222" stroke-width="12"></circle>
+                    <circle id="timer-progress-ring" class="timer-progress-ring" cx="100" cy="100" r="90" fill="none" stroke="var(--accent-color)" stroke-width="12" stroke-linecap="round" 
+                            stroke-dasharray="565" stroke-dashoffset="0" transform="rotate(-90 100 100)"></circle>
+                </svg>
+                <div id="timer-display" class="timer-number">60</div>
+            </div>
 
-        <div class="timer-controls">
-            <button class="btn-outline btn-timer-control" onclick="window.addRestTime(20)">+20s</button>
-            <button class="btn btn-timer-skip" onclick="window.closeTimer()">¡LISTO!</button>
-            <button class="btn-outline btn-timer-control" onclick="window.addRestTime(-10)">-10s</button>
+            <div class="timer-controls">
+                <button class="btn-outline btn-timer-control" onclick="window.addRestTime(20)">+20s</button>
+                <button class="btn btn-timer-skip" onclick="window.closeTimer()">¡LISTO!</button>
+                <button class="btn-outline btn-timer-control" onclick="window.addRestTime(-10)">-10s</button>
+            </div>
         </div>
     </div>
-</div>
 
     <div id="modal-assign-plan" class="modal">
         <div class="modal-content">
@@ -559,6 +568,15 @@
         <button class="btn-outline" style="margin-top:20px; width: 100%;" onclick="window.closeModal('modal-progress')">CERRAR</button>
     </div>
 </div>
+
+    <div id="modal-note" class="modal">
+        <div class="modal-content">
+            <h3>📝 NOTA DE EJERCICIO</h3>
+            <textarea id="exercise-note-input" rows="4" placeholder="Ej: Me molestó el hombro, subir peso la próxima..." style="width:100%; background:#222; color:white; border:1px solid #444; border-radius:8px; padding:10px; margin: 15px 0;"></textarea>
+            <button class="btn" onclick="window.saveNote()">GUARDAR NOTA</button>
+            <button class="btn-outline" onclick="window.closeModal('modal-note')">CANCELAR</button>
+        </div>
+    </div>
 
     <div id="modal-video" class="modal" style="z-index: 3000;">
         <div class="modal-content" style="width:100%; max-width:600px; padding:10px; background:black;">
