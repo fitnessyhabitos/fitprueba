@@ -4,7 +4,7 @@ import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, q
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 import { EXERCISES } from './data.js';
 
-console.log("⚡ FIT DATA: App Iniciada (Dietas + Visuales)...");
+console.log("⚡ FIT DATA: App Iniciada (High Performance Mode)...");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDW40Lg6QvBc3zaaA58konqsH3QtDrRmyM",
@@ -36,8 +36,8 @@ let userData = null;
 let activeWorkout = null; 
 let timerInt = null; 
 let durationInt = null;
-let restEndTime = 0; 
 let wakeLock = null;
+let totalRestTime = 60; // Para la animación del círculo SVG
 
 let chartInstance = null; 
 let progressChart = null; 
@@ -91,7 +91,7 @@ window.toggleElement = (id) => {
     if(el) el.classList.toggle('hidden');
 };
 
-// --- AUDIO ENGINE (WEB AUDIO API - MODULAR) ---
+// --- AUDIO ENGINE (WEB AUDIO API - MODULAR & ROBUSTO) ---
 
 // 1. Audio de fondo "Keep-Alive" (Silencio infinito generado por código)
 function playSilentAudio() {
@@ -107,7 +107,6 @@ function playSilentAudio() {
         }
 
         // Creamos un buffer de 1 segundo de silencio absoluto
-        // Esto mantiene el thread de audio activo sin gastar batería decodificando MP3s
         const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate, audioCtx.sampleRate);
         const source = audioCtx.createBufferSource();
         source.buffer = buffer;
@@ -176,9 +175,9 @@ function play5Beeps() {
         osc.start(start); 
         osc.stop(end);
         
-        // Evitar "clipping" (ruido al inicio/fin)
+        // Evitar "clipping"
         gain.gain.setValueAtTime(0, start);
-        gain.gain.linearRampToValueAtTime(0.5, start + 0.02);
+        gain.gain.linearRampToValueAtTime(0.3, start + 0.02);
         gain.gain.exponentialRampToValueAtTime(0.01, end);
     }
 }
@@ -338,7 +337,6 @@ async function loadRoutines() {
     });
 }
 
-// REPARADO: Recupera correctamente series/reps
 window.openEditor = async (id = null) => {
     editingRoutineId = id;
     document.getElementById('editor-name').value = '';
@@ -349,7 +347,6 @@ window.openEditor = async (id = null) => {
         const r = docSnap.data();
         document.getElementById('editor-name').value = r.name;
         
-        // Mapeamos asegurando que cada ejercicio sea un objeto con sus propiedades
         currentRoutineSelections = r.exercises.map(ex => ({
             n: ex.n || ex,
             s: ex.s || false,
@@ -360,9 +357,7 @@ window.openEditor = async (id = null) => {
         currentRoutineSelections = [];
     }
 
-    // ACTUALIZAR REFERENCIA GLOBAL
     window.currentRoutineSelections = currentRoutineSelections;
-
     renderExercises(EXERCISES); 
     renderSelectedSummary();
     switchTab('editor-view');
@@ -370,22 +365,14 @@ window.openEditor = async (id = null) => {
 
 window.filterExercises = (t) => { 
     const cleanSearch = normalizeText(t);
-    
     const filtered = EXERCISES.filter(e => {
-        // 1. Normalizamos el nombre del ejercicio
         const nameMatch = normalizeText(e.n).includes(cleanSearch);
-        
-        // 2. Normalizamos el grupo muscular (si existe)
         const muscleMatch = e.m ? normalizeText(e.m).includes(cleanSearch) : false;
-        
-        // 3. Devolvemos true si coincide cualquiera de los dos
         return nameMatch || muscleMatch;
     });
-    
     renderExercises(filtered); 
 };
 
-// 1. Corregido: Asegura que al seleccionar un ejercicio se cree el objeto con la estructura completa
 function renderExercises(l) {
     const c = document.getElementById('exercise-selector-list'); 
     c.innerHTML = '';
@@ -399,13 +386,7 @@ function renderExercises(l) {
             if(index > -1) { 
                 currentRoutineSelections.splice(index, 1);
             } else { 
-                // Inicializamos con los valores que queremos que sean editables
-                currentRoutineSelections.push({ 
-                    n: e.n, 
-                    s: false, 
-                    series: 5, 
-                    reps: "20-16-16-16-16" 
-                });
+                currentRoutineSelections.push({ n: e.n, s: false, series: 5, reps: "20-16-16-16-16" });
             } 
             renderExercises(l);
             renderSelectedSummary(); 
@@ -414,19 +395,15 @@ function renderExercises(l) {
     });
 }
 
-// 2. Corregido: Vinculación real de los inputs con el array de objetos (oninput)
 window.renderSelectedSummary = () => {
     const div = document.getElementById('selected-summary'); 
     div.innerHTML = '';
-    
-    // Sincronizamos la variable global por si acaso
     window.currentRoutineSelections = currentRoutineSelections;
 
     currentRoutineSelections.forEach((obj, idx) => { 
         const pill = document.createElement('div'); 
         pill.className = 'summary-item-card'; 
         let linkStyle = obj.s ? "color: white; font-weight:bold; text-shadow: 0 0 5px white;" : "color:rgba(255,255,255,0.2);";
-        
         pill.innerHTML = `
             <span class="summary-item-name">${obj.n}</span>
             <div class="summary-inputs">
@@ -460,9 +437,7 @@ window.removeSelection = (name) => {
 
 window.saveRoutine = async () => {
     const n = document.getElementById('editor-name').value;
-    // Usamos la variable actualizada por los inputs
     const s = window.currentRoutineSelections; 
-    
     if(!n || s.length === 0) return alert("❌ Faltan datos (Nombre o Ejercicios)");
     
     const btn = document.getElementById('btn-save-routine'); 
@@ -472,20 +447,15 @@ window.saveRoutine = async () => {
         const data = { 
             uid: currentUser.uid, 
             name: n, 
-            exercises: s, // Aquí ya van los objetos con .series y .reps
+            exercises: s, 
             createdAt: serverTimestamp(), 
             assignedTo: [] 
         };
-        
         if(editingRoutineId) {
-            await updateDoc(doc(db, "routines", editingRoutineId), {
-                name: n, 
-                exercises: s 
-            });
+            await updateDoc(doc(db, "routines", editingRoutineId), { name: n, exercises: s });
         } else {
             await addDoc(collection(db, "routines"), data);
         }
-        
         alert("✅ Rutina guardada correctamente");
         switchTab('routines-view');
     } catch(e) { 
@@ -835,7 +805,6 @@ window.cancelWorkout = () => {
     }
 };
 
-// 3. Corregido: Al iniciar el entreno, se mapean obligatoriamente los datos guardados en la rutina
 window.startWorkout = async (rid) => {
     if(document.getElementById('cfg-wake').checked && 'wakeLock' in navigator) try{wakeLock=await navigator.wakeLock.request('screen');}catch(e){}
     try {
@@ -854,28 +823,19 @@ window.startWorkout = async (rid) => {
             name: r.name, 
             startTime: now, 
             exs: r.exercises.map(exObj => {
-                // Si por error se guardó como string, volvemos a objeto, si no usamos el objeto guardado
                 const isString = typeof exObj === 'string';
                 const name = isString ? exObj : exObj.n;
                 const isSuperset = isString ? false : (exObj.s || false);
-                
-                // PRIORIDAD: Datos de la rutina > Datos por defecto
                 const customSeriesNum = isString ? 5 : (parseInt(exObj.series) || 5);
                 const customRepsPattern = isString ? "20-16-16-16-16" : (exObj.reps || "20-16-16-16-16");
-                
                 const repsArray = customRepsPattern.split('-');
                 const data = getExerciseData(name);
                 
                 let sets = Array(customSeriesNum).fill().map((_, i) => ({
-                    // Buscamos la repetición en el patrón, si no existe usamos la última disponible
                     r: repsArray[i] ? parseInt(repsArray[i]) : parseInt(repsArray[repsArray.length - 1]),
-                    w: 0, 
-                    d: false, 
-                    prev: '-', 
-                    numDisplay: (i + 1).toString()
+                    w: 0, d: false, prev: '-', numDisplay: (i + 1).toString()
                 }));
 
-                // Cargar pesos anteriores si existen
                 if(lastWorkoutData) {
                     const prevEx = lastWorkoutData.find(ld => ld.n === name);
                     if(prevEx && prevEx.s) {
@@ -932,7 +892,6 @@ window.performSwap = (newName) => {
     saveLocalWorkout(); renderWorkout(); window.closeModal('modal-swap');
 };
 
-// REPARADO: Bloqueo de fila y numeración decimal para Dropsets
 function renderWorkout() {
     const c = document.getElementById('workout-exercises'); c.innerHTML = '';
     document.getElementById('workout-title').innerText = activeWorkout.name;
@@ -976,7 +935,6 @@ function renderWorkout() {
     });
 }
 
-// REPARADO: Bloquea fila previa y usa numeración decimal
 window.addDropset = (exIdx, setIdx) => {
     const currentSet = activeWorkout.exs[exIdx].sets[setIdx];
     currentSet.d = true; 
@@ -992,27 +950,56 @@ window.addDropset = (exIdx, setIdx) => {
 
 window.uS = (i,j,k,v) => { activeWorkout.exs[i].sets[j][k]=v; saveLocalWorkout(); };
 
-window.tS = (i, j) => { 
+// --- LOGICA DE RÉCORD 1RM (Fuerza Real) & CONFETI ---
+window.tS = async (i, j) => { 
     const s = activeWorkout.exs[i].sets[j]; 
     const exerciseName = activeWorkout.exs[i].n;
     s.d = !s.d; 
+    
     if(s.d) { 
         const weight = parseFloat(s.w) || 0;
-        const currentPR = userData.prs ? (userData.prs[exerciseName] || 0) : 0;
-        if (weight > currentPR && weight > 0) {
-            if(!userData.prs) userData.prs = {};
-            userData.prs[exerciseName] = weight;
-            if(typeof confetti === 'function') confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#ff3333', '#ffffff', '#00ff88'] });
-            showToast(`🏆 ¡NUEVO RÉCORD! ${weight} KG en ${exerciseName}`);
+        const reps = parseInt(s.r) || 0;
+
+        if (weight > 0 && reps > 0) {
+            // 1. Cálculo del 1RM Estimado (Fórmula Brzycki)
+            const estimated1RM = Math.round(weight / (1.0278 - (0.0278 * reps)));
+
+            // 2. Obtenemos el récord anterior del perfil del usuario
+            if (!userData.rmRecords) userData.rmRecords = {};
+            const currentRecord = userData.rmRecords[exerciseName] || 0;
+
+            // 3. ¿Es un NUEVO RÉCORD de Fuerza?
+            if (estimated1RM > currentRecord) {
+                userData.rmRecords[exerciseName] = estimated1RM;
+                updateDoc(doc(db, "users", currentUser.uid), { [`rmRecords.${exerciseName}`]: estimated1RM });
+
+                // 4. ¡CELEBRACIÓN! 🎉
+                if(typeof confetti === 'function') {
+                    confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 }, colors: ['#00ff88', '#ffffff'] });
+                    setTimeout(() => confetti({ particleCount: 50, angle: 60, spread: 55, origin: { x: 0 } }), 200);
+                    setTimeout(() => confetti({ particleCount: 50, angle: 120, spread: 55, origin: { x: 1 } }), 200);
+                }
+                showToast(`🔥 ¡NUEVO NIVEL DE FUERZA!<br>1RM Est: <b>${estimated1RM}kg</b> en ${exerciseName}`);
+            } 
+            // Si no es 1RM, revisamos si es PR de peso
+            else {
+                const currentWeightPR = userData.prs ? (userData.prs[exerciseName] || 0) : 0;
+                if (weight > currentWeightPR) {
+                    if(!userData.prs) userData.prs = {};
+                    userData.prs[exerciseName] = weight;
+                    updateDoc(doc(db, "users", currentUser.uid), { [`prs.${exerciseName}`]: weight });
+                    showToast(`💪 Peso Máximo Superado: ${weight}kg`);
+                }
+            }
         }
         openRest(); 
     } 
-    saveLocalWorkout(); renderWorkout();
+    saveLocalWorkout(); 
+    renderWorkout();
 };
 
 // --- GESTIÓN DE NOTIFICACIONES Y MEDIA SESSION (ISLA DINÁMICA) ---
 
-// 1. Solicitar permiso explícito (puedes llamarlo desde un botón en config)
 window.requestNotifPermission = () => {
     if ("Notification" in window) {
         Notification.requestPermission().then(p => {
@@ -1024,7 +1011,6 @@ window.requestNotifPermission = () => {
     }
 };
 
-// 2. Función auxiliar para actualizar la Isla Dinámica / Pantalla de Bloqueo
 const updateMediaSession = (titleText, artistText) => {
     if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({
@@ -1033,100 +1019,96 @@ const updateMediaSession = (titleText, artistText) => {
             album: 'Fit Data Pro',
             artwork: [{ src: 'logo.png', sizes: '512x512', type: 'image/png' }]
         });
-        // Mantenemos el estado 'playing' para que iOS muestre el control
         navigator.mediaSession.playbackState = "playing";
     }
 };
 
-// 3. Función openRest MEJORADA (WebPush Local + Isla Dinámica)
+// --- VISUALES DEL CRONÓMETRO SVG ---
+function updateTimerVisuals(timeLeft) {
+    const display = document.getElementById('timer-display');
+    const ring = document.getElementById('timer-progress-ring');
+    
+    if(display) display.innerText = timeLeft;
+    
+    if(ring) {
+        // Circunferencia r=90 -> 2 * PI * 90 ≈ 565
+        const circumference = 565; 
+        const offset = circumference - (timeLeft / totalRestTime) * circumference;
+        ring.style.strokeDashoffset = offset;
+
+        // Cambio de color dinámico
+        if (timeLeft > totalRestTime * 0.5) {
+            ring.style.stroke = "var(--success-color)";
+        } else if (timeLeft > 10) {
+            ring.style.stroke = "var(--warning-color)";
+        } else {
+            ring.style.stroke = "var(--accent-color)";
+        }
+    }
+}
+
 function openRest() {
     window.openModal('modal-timer');
-    playSilentAudio(); // Vital para mantener el JS vivo en background en iOS
+    playSilentAudio(); 
     
-    let left = userData.restTime || 60;
+    let left = parseInt(userData.restTime) || 60;
+    totalRestTime = left; // Set for SVG calc
     
-    // Inicializar visuales
-    document.getElementById('timer-display').innerText = left;
+    updateTimerVisuals(left);
     updateMediaSession(`DESCANSO: ${left}s`, "Recuperando...");
 
     if(timerInt) clearInterval(timerInt);
     
     timerInt = setInterval(() => {
         left--;
+        updateTimerVisuals(left);
         
-        // Actualizar UI Modal
-        const display = document.getElementById('timer-display');
-        if(display) display.innerText = left;
-        
-        // Actualizar Isla Dinámica (cada segundo)
         if(left > 0) {
             updateMediaSession(`⏳ DESCANSO: ${left}s`, "Mantente enfocado");
         } 
         else {
-            // FIN DEL DESCANSO
             window.closeTimer();
-            
-            // A. Sonido (Llamamos a play5Beeps directamente)
             if(document.getElementById('cfg-sound') && document.getElementById('cfg-sound').checked) {
                 play5Beeps();
             }
-            
-            // B. Notificación Visual (Si el usuario está en otra app)
             if ("Notification" in window && Notification.permission === "granted") {
                 try {
-                    // En móvil, esto hace vibrar y sonar según configuración del sistema
                     const notif = new Notification("¡TIEMPO! 🔔", { 
                         body: "Descanso finalizado. ¡A por la siguiente serie!", 
-                        icon: "logo.png",
-                        tag: "rest-timer", // Evita acumular notificaciones
-                        renotify: true
+                        icon: "logo.png", tag: "rest-timer", renotify: true
                     });
-                    // Cierre automático de la notificación visual tras 4s
                     setTimeout(() => notif.close(), 4000); 
                 } catch(e) { console.log("Error notif:", e); }
             }
-            
-            // C. Vibración Hágitca (Android principalmente)
             if("vibrate" in navigator) navigator.vibrate([200, 100, 200]);
         }
     }, 1000);
 }
 
-// 4. Cierre del Timer y Limpieza
 window.closeTimer = () => {
     clearInterval(timerInt);
     window.closeModal('modal-timer');
-    
-    // Restaurar estado de "Entrenando" en la Isla Dinámica
     if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({
-            title: 'Entrenando',
-            artist: 'Fit Data Pro',
+            title: 'Entrenando', artist: 'Fit Data Pro',
             artwork: [{ src: 'logo.png', sizes: '512x512', type: 'image/png' }]
         });
-        // No pausamos el audio para que el cronómetro global del entreno siga fiable
     }
 };
 
 window.addRestTime = (s) => { 
-    // Esta función ahora debe sumar al contador interno local, no a una variable global 'restEndTime'
-    // Dado que cambiamos la lógica a un 'left--' local en el intervalo, 
-    // necesitamos reiniciar el intervalo con el nuevo tiempo.
-    
-    clearInterval(timerInt); // Paramos el actual
+    clearInterval(timerInt);
     let currentVal = parseInt(document.getElementById('timer-display').innerText) || 0;
     let newTime = currentVal + s;
+    if (s > 0) totalRestTime += s; // Ajustar total si se añade tiempo para suavizar animación
     
-    // Reiniciamos la lógica con el nuevo tiempo
+    updateTimerVisuals(newTime);
+    updateMediaSession(`DESCANSO: ${newTime}s`, "Tiempo añadido");
+    
     let left = newTime;
-    document.getElementById('timer-display').innerText = left;
-    updateMediaSession(`DESCANSO: ${left}s`, "Tiempo añadido +20s");
-    
     timerInt = setInterval(() => {
         left--;
-        const display = document.getElementById('timer-display');
-        if(display) display.innerText = left;
-        
+        updateTimerVisuals(left);
         if(left > 0) {
             updateMediaSession(`⏳ DESCANSO: ${left}s`, "Mantente enfocado");
         } else {
@@ -1140,16 +1122,11 @@ window.addRestTime = (s) => {
     }, 1000);
 };
 
-// 5. Timer Global (Mini Timer en la cabecera)
 function startTimerMini() { 
     if(durationInt) clearInterval(durationInt);
     const d = document.getElementById('mini-timer'); 
-    
-    // Si no hay startTime, lo creamos (seguridad)
     if(!activeWorkout.startTime) activeWorkout.startTime = Date.now();
-    
     const startTime = activeWorkout.startTime; 
-    
     durationInt = setInterval(()=>{
         const diff = Math.floor((Date.now() - startTime)/1000); 
         const m = Math.floor(diff/60);
@@ -1158,48 +1135,27 @@ function startTimerMini() {
     }, 1000); 
 }
 
-// --- CORRECCIÓN EN promptRPE ---
 window.promptRPE = () => {
     const radarCtx = document.getElementById('muscleRadarChart');
     if (!radarCtx) return;
+    if (radarChartInstance) radarChartInstance.destroy();
 
-    if (radarChartInstance) {
-        radarChartInstance.destroy();
-    }
-
-    // Inicializamos con 0 para evitar NaNs
-    const muscleCounts = { 
-        "Pecho": 0, 
-        "Espalda": 0, 
-        "Pierna": 0, 
-        "Hombros": 0, 
-        "Brazos": 0, 
-        "Abs": 0 
-    };
-
-    // Validación defensiva de activeWorkout
+    const muscleCounts = { "Pecho":0, "Espalda":0, "Pierna":0, "Hombros":0, "Brazos":0, "Abs":0 };
     if (activeWorkout && activeWorkout.exs) {
         activeWorkout.exs.forEach(e => {
             const m = e.mInfo?.main || "General";
             let key = "";
-            
-            if (["Pecho", "Espalda", "Hombros", "Abs"].includes(m)) {
-                key = m;
-            } else if (["Cuádriceps", "Isquios", "Glúteos", "Gemelos"].includes(m)) {
-                key = "Pierna";
-            } else if (["Bíceps", "Tríceps"].includes(m)) {
-                key = "Brazos";
-            }
+            if (["Pecho", "Espalda", "Hombros", "Abs"].includes(m)) key = m;
+            else if (["Cuádriceps", "Isquios", "Glúteos", "Gemelos"].includes(m)) key = "Pierna";
+            else if (["Bíceps", "Tríceps"].includes(m)) key = "Brazos";
 
             if (key && muscleCounts.hasOwnProperty(key)) {
-                // Solo contamos series completadas (checkeadas)
                 const completedSets = e.sets?.filter(s => s.d).length || 0;
                 muscleCounts[key] += completedSets;
             }
         });
     }
 
-    // Configuración robusta para Chart.js
     radarChartInstance = new Chart(radarCtx, {
         type: 'radar',
         data: {
@@ -1216,33 +1172,25 @@ window.promptRPE = () => {
         options: {
             scales: {
                 r: {
-                    beginAtZero: true,
-                    min: 0,
-                    // Forzamos un paso numérico para evitar que el algoritmo de ticks genere NaNs
-                    ticks: { 
-                        display: false,
-                        stepSize: 1 
-                    },
+                    beginAtZero: true, min: 0,
+                    ticks: { display: false, stepSize: 1 },
                     grid: { color: '#333' },
                     angleLines: { color: '#333' },
                     pointLabels: { color: '#ffffff', font: { size: 10 } }
                 }
             },
             plugins: { legend: { display: false } },
-            maintainAspectRatio: false,
-            responsive: true
+            maintainAspectRatio: false, responsive: true
         }
     });
-
     const notesEl = document.getElementById('workout-notes');
     if (notesEl) notesEl.value = ''; 
-    
     window.openModal('modal-rpe');
 };
 
 function showToast(msg) {
     const container = document.getElementById('toast-container') || createToastContainer();
-    const t = document.createElement('div'); t.className = 'toast-msg'; t.innerText = msg;
+    const t = document.createElement('div'); t.className = 'toast-msg'; t.innerHTML = msg;
     container.appendChild(t);
     setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 500); }, 4000);
 }
@@ -1251,56 +1199,37 @@ function createToastContainer() {
     const div = document.createElement('div'); div.id = 'toast-container'; document.body.appendChild(div); return div;
 }
 
-// --- CORRECCIÓN EN finishWorkout PARA EVITAR NaNs EN FIREBASE ---
 window.finishWorkout = async (rpeVal) => {
     try {
         window.closeModal('modal-rpe');
-        
         const note = document.getElementById('workout-notes')?.value || "";
         let totalSets = 0, totalReps = 0, totalKg = 0;
         let muscleCounts = {};
 
-        // Mapeo defensivo de logs
         const cleanLog = activeWorkout.exs.map(e => {
             const completedSets = e.sets.filter(set => set.d).map(set => {
                 const r = parseInt(set.r) || 0;
                 const w = parseFloat(set.w) || 0;
-                
-                totalSets++;
-                totalReps += r;
-                totalKg += (r * w);
-                
-                // Contar volumen por músculo
+                totalSets++; totalReps += r; totalKg += (r * w);
                 const mName = e.mInfo?.main || "General";
                 muscleCounts[mName] = (muscleCounts[mName] || 0) + 1;
-
                 return { r, w, isDrop: !!set.isDrop, numDisplay: String(set.numDisplay || "") };
             });
-
             return { n: e.n, s: completedSets, superset: !!e.superset };
         }).filter(e => e.s.length > 0);
 
-        if (cleanLog.length === 0) {
-            alert("No hay series completadas para guardar.");
-            return;
-        }
+        if (cleanLog.length === 0) { alert("No hay series completadas para guardar."); return; }
 
         const workoutNum = (userData.stats?.workouts || 0) + 1;
         const volumeDisplay = totalKg >= 1000 ? (totalKg / 1000).toFixed(2) + "t" : totalKg.toFixed(0) + "kg";
 
-        // Escritura en Firestore
         await addDoc(collection(db, "workouts"), {
-            uid: currentUser.uid,
-            date: serverTimestamp(),
+            uid: currentUser.uid, date: serverTimestamp(),
             routine: activeWorkout.name || "Rutina sin nombre",
-            rpe: rpeVal,
-            note: note,
-            details: cleanLog,
-            workoutNumber: workoutNum,
-            sessionVolume: Number(totalKg.toFixed(2))
+            rpe: rpeVal, note: note, details: cleanLog,
+            workoutNumber: workoutNum, sessionVolume: Number(totalKg.toFixed(2))
         });
 
-        // Actualización de stats del usuario
         const updates = {
             "stats.workouts": increment(1),
             "stats.totalSets": increment(totalSets),
@@ -1308,21 +1237,16 @@ window.finishWorkout = async (rpeVal) => {
             "stats.totalKg": increment(totalKg),
             "prs": userData.prs || {}
         };
-
-        // Añadir incrementos de músculos dinámicamente
         for (const [muscle, count] of Object.entries(muscleCounts)) {
             updates[`muscleStats.${muscle}`] = increment(count);
         }
-
         await updateDoc(doc(db, "users", currentUser.uid), updates);
 
         showToast(`🏆 ¡Entreno nº ${workoutNum} completado! Volumen total: ${volumeDisplay}`);
         
-        // Limpieza de estado
         localStorage.removeItem('fit_active_workout');
         if (durationInt) clearInterval(durationInt);
         if (wakeLock) { await wakeLock.release(); wakeLock = null; }
-        
         window.switchTab('routines-view');
 
     } catch (error) {
@@ -1354,24 +1278,20 @@ window.renderProgressChart = (exName) => {
     const labels = [];
     const volumenData = []; 
     const prData = [];      
-    const rmData = []; // Datos para el 1RM Estimado
+    const rmData = []; 
 
     window.tempHistoryCache.forEach(w => {
         const exerciseData = w.details.find(d => d.n === exName);
         if (exerciseData) {
             let totalVolumenSesion = 0;
             let maxPesoSesion = 0;
-            let bestRM = 0; // Buscaremos el mejor RM de la sesión
+            let bestRM = 0; 
 
             exerciseData.s.forEach(set => {
                 const weight = parseFloat(set.w) || 0;
                 const reps = parseInt(set.r) || 0;
-                
-                // Cálculo de Volumen y PR
                 totalVolumenSesion += (weight * reps);
                 if (weight > maxPesoSesion) maxPesoSesion = weight;
-
-                // Cálculo 1RM Brzycki: Peso / (1.0278 - (0.0278 * Reps))
                 if (reps > 0 && weight > 0) {
                     const currentRM = weight / (1.0278 - (0.0278 * reps));
                     if (currentRM > bestRM) bestRM = currentRM;
@@ -1381,7 +1301,6 @@ window.renderProgressChart = (exName) => {
             if (totalVolumenSesion > 0) {
                 const dateObj = new Date(w.date.seconds * 1000);
                 labels.push(dateObj.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }));
-                
                 volumenData.push(totalVolumenSesion);
                 prData.push(maxPesoSesion);
                 rmData.push(Math.round(bestRM));
@@ -1407,8 +1326,8 @@ window.renderProgressChart = (exName) => {
                 {
                     label: '1RM Est. (Fuerza Real)',
                     data: rmData,
-                    borderColor: '#ffaa00', // Dorado
-                    yAxisID: 'y1', // Comparte eje con el PR
+                    borderColor: '#ffaa00', 
+                    yAxisID: 'y1', 
                     tension: 0.3,
                     pointRadius: 4,
                     borderWidth: 3
@@ -1430,32 +1349,18 @@ window.renderProgressChart = (exName) => {
             maintainAspectRatio: false,
             scales: {
                 y: {
-                    type: 'linear',
-                    display: true,
-                    position: 'left',
+                    type: 'linear', display: true, position: 'left',
                     title: { display: true, text: 'Volumen (Kg)', color: '#00ff88' },
-                    ticks: { color: '#888' },
-                    grid: { color: '#333' }
+                    ticks: { color: '#888' }, grid: { color: '#333' }
                 },
                 y1: {
-                    type: 'linear',
-                    display: true,
-                    position: 'right',
+                    type: 'linear', display: true, position: 'right',
                     title: { display: true, text: 'Fuerza / RM (Kg)', color: '#ffaa00' },
-                    ticks: { color: '#888' },
-                    grid: { drawOnChartArea: false } 
+                    ticks: { color: '#888' }, grid: { drawOnChartArea: false } 
                 },
-                x: {
-                    ticks: { color: '#888' },
-                    grid: { display: false }
-                }
+                x: { ticks: { color: '#888' }, grid: { display: false } }
             },
-            plugins: {
-                legend: { 
-                    position: 'top',
-                    labels: { color: 'white', padding: 15, font: { size: 10 } } 
-                }
-            }
+            plugins: { legend: { position: 'top', labels: { color: 'white', padding: 15, font: { size: 10 } } } }
         }
     });
 };
