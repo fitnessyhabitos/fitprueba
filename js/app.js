@@ -4,7 +4,7 @@ import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, q
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 import { EXERCISES } from './data.js';
 
-console.log("⚡ FIT DATA: App Iniciada (Full Performance Mode)...");
+console.log("⚡ FIT DATA: App Iniciada (Full Pro Mode - iOS Native Audio)...");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDW40Lg6QvBc3zaaA58konqsH3QtDrRmyM",
@@ -91,53 +91,37 @@ window.toggleElement = (id) => {
     if(el) el.classList.toggle('hidden');
 };
 
-// --- AUDIO ENGINE (WEB AUDIO API) ---
+// --- AUDIO ENGINE (HYBRID: HTML5 AUDIO + WEB AUDIO API) ---
+// Este sistema asegura la presencia en la Isla Dinámica
+
+// MP3 Silencioso en Base64 (0.5s)
+const SILENT_MP3 = "data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjIwLjEwMAAAAAAAAAAAAAAA//oeEsAAAAAAAASwgAAAAEAAGiAAAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//oeEsAA1gAAASwgAAAAEAAGiAAAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//oeEsAA1gAAASwgAAAAEAAGiAAAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
+
+let htmlAudioElement = null;
 
 function playSilentAudio() {
-    try {
-        if (!audioCtx) {
-            const AudioContext = window.AudioContext || window.webkitAudioContext;
-            audioCtx = new AudioContext();
-        }
-        if (audioCtx.state === 'suspended') {
-            audioCtx.resume();
-        }
-        const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate, audioCtx.sampleRate);
-        const source = audioCtx.createBufferSource();
-        source.buffer = buffer;
-        source.loop = true; 
-        source.connect(audioCtx.destination);
-        source.start(0);
+    // 1. Crear el elemento de audio físico si no existe
+    if (!htmlAudioElement) {
+        htmlAudioElement = new Audio(SILENT_MP3);
+        htmlAudioElement.loop = true;
+        htmlAudioElement.volume = 0.05; // Mínimo volumen para que iOS lo detecte como "activo"
+    }
 
+    // 2. Reproducir para activar controles multimedia del sistema
+    htmlAudioElement.play().then(() => {
+        // Forzamos metadatos inmediatamente
         if ('mediaSession' in navigator) {
             navigator.mediaSession.metadata = new MediaMetadata({
-                title: 'Entrenamiento en curso 🏋️',
+                title: 'Entrenamiento Activo',
                 artist: 'Fit Data Pro',
-                album: 'Keep-Alive Activo',
+                album: 'Toque para volver',
                 artwork: [{ src: 'logo.png', sizes: '512x512', type: 'image/png' }]
             });
             navigator.mediaSession.playbackState = "playing";
         }
-    } catch (e) {
-        console.error("Error Audio:", e);
-    }
-}
+    }).catch(e => console.log("Audio autoplay bloqueado (esperando toque usuario)"));
 
-function unlockAudio() {
-    if(!audioCtx) {
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        audioCtx = new AudioContext();
-    }
-    if(audioCtx.state === 'suspended') { 
-        audioCtx.resume().then(() => playSilentAudio());
-    } else {
-        playSilentAudio();
-    }
-}
-document.addEventListener('touchstart', unlockAudio, {once:true});
-document.addEventListener('click', unlockAudio, {once:true});
-
-function play5Beeps() {
+    // 3. Inicializar contexto WebAudio (para los beeps precisos)
     if (!audioCtx) {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         audioCtx = new AudioContext();
@@ -145,19 +129,50 @@ function play5Beeps() {
     if (audioCtx.state === 'suspended') {
         audioCtx.resume();
     }
+}
+
+function unlockAudio() {
+    // Disparamos ambos motores
+    playSilentAudio();
+    
+    if(!audioCtx) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContext();
+    }
+    if(audioCtx.state === 'suspended') { 
+        audioCtx.resume();
+    }
+}
+
+// Listeners de interacción inicial
+document.addEventListener('touchstart', unlockAudio, {once:true});
+document.addEventListener('click', unlockAudio, {once:true});
+
+// Generador de Beeps (Usa Web Audio API para no cortar la música de fondo del usuario)
+function play5Beeps() {
+    if (!audioCtx) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContext();
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
 
     const now = audioCtx.currentTime;
     for(let i=0; i<5; i++) {
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
+        
         osc.type = 'square'; 
         osc.frequency.setValueAtTime(880, now + (i * 0.6)); 
+        
         osc.connect(gain); 
         gain.connect(audioCtx.destination);
+        
         const start = now + (i * 0.6); 
         const end = start + 0.15;
+        
         osc.start(start); 
         osc.stop(end);
+        
         gain.gain.setValueAtTime(0, start);
         gain.gain.linearRampToValueAtTime(0.5, start + 0.02);
         gain.gain.exponentialRampToValueAtTime(0.01, end);
