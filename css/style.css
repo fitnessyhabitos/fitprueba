@@ -332,3 +332,64 @@ input:checked + .slider { background-color: var(--accent-color); } input:checked
     border-color: #444;
     font-family: monospace;
 }
+
+/* --- NUEVOS ESTILOS: AVATARES, NOTAS Y RANKING --- */
+
+/* 1. Lista de Atletas Compacta */
+.admin-user-row {
+    display: grid;
+    grid-template-columns: 45px 1fr 40px; /* Avatar | Info | Botón */
+    gap: 12px;
+    padding: 12px;
+    align-items: center;
+    border-bottom: 1px solid #222;
+}
+.mini-avatar {
+    width: 45px; height: 45px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: #333;
+    border: 1px solid #555;
+}
+.mini-avatar-placeholder {
+    width: 45px; height: 45px;
+    border-radius: 50%;
+    background: #222;
+    color: var(--accent-color);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: bold; font-size: 1.2rem;
+    border: 1px solid #333;
+}
+
+/* 2. Notas de Ejercicio */
+.ex-note-btn {
+    background: none; border: none; font-size: 1rem; cursor: pointer;
+    opacity: 0.7; transition: opacity 0.2s; margin-right: 8px;
+}
+.ex-note-btn.has-note { opacity: 1; text-shadow: 0 0 10px var(--warning-color); }
+.note-badge {
+    display: block; font-size: 0.75rem; color: #aaa; 
+    background: #1a1a1a; padding: 6px; border-radius: 6px; 
+    margin-top: 5px; border-left: 2px solid var(--warning-color);
+    font-style: italic;
+}
+
+/* 3. Ranking y Logros */
+.ranking-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px; background: #1a1a1a; margin-bottom: 8px;
+    border-radius: 8px; border: 1px solid #333;
+}
+.ranking-pos {
+    font-size: 1.2rem; font-weight: 900; color: #666; width: 30px;
+}
+.ranking-1 { color: #FFD700; text-shadow: 0 0 10px rgba(255, 215, 0, 0.5); } /* Oro */
+.ranking-2 { color: #C0C0C0; } /* Plata */
+.ranking-3 { color: #CD7F32; } /* Bronce */
+
+.trophy-case {
+    display: flex; gap: 10px; justify-content: center; margin: 15px 0;
+    padding: 10px; background: rgba(255,255,255,0.05); border-radius: 12px;
+}
+.trophy { opacity: 0.3; filter: grayscale(100%); transition: 0.3s; font-size: 1.5rem; }
+.trophy.unlocked { opacity: 1; filter: grayscale(0%); text-shadow: 0 0 15px currentColor; transform: scale(1.1); }
