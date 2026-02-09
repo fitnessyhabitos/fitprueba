@@ -998,29 +998,29 @@ const updateMediaSession = (titleText, artistText) => {
     }
 };
 
-// --- VISUALES DEL CRONÓMETRO SVG (ESTILO DEPORTIVO) ---
+// --- VISUALES DEL CRONÓMETRO SVG (SOLO ROJO) ---
 function updateTimerVisuals(timeLeft) {
     const display = document.getElementById('timer-display');
     const ring = document.getElementById('timer-progress-ring');
     
-    // Si tienes el nuevo HTML con SVG, actualizamos el texto dentro
-    if(display) display.innerText = timeLeft;
+    if(display) {
+        display.innerText = timeLeft;
+        // Efecto de parpadeo en el texto si queda poco tiempo (< 5s)
+        display.style.color = timeLeft <= 5 ? "#fff" : "var(--accent-color)";
+        display.style.textShadow = timeLeft <= 5 ? "0 0 20px #fff" : "none";
+    }
     
-    // Si existe el anillo SVG (porque cambiaste el HTML), lo animamos
     if(ring) {
         // Circunferencia r=90 -> 2 * PI * 90 ≈ 565
         const circumference = 565; 
         const offset = circumference - (timeLeft / totalRestTime) * circumference;
         ring.style.strokeDashoffset = offset;
 
-        // Cambio de color dinámico (Verde -> Naranja -> Rojo)
-        if (timeLeft > totalRestTime * 0.5) {
-            ring.style.stroke = "var(--success-color)";
-        } else if (timeLeft > 10) {
-            ring.style.stroke = "var(--warning-color)";
-        } else {
-            ring.style.stroke = "var(--accent-color)";
-        }
+        // FORZAMOS COLOR ROJO DE LA MARCA SIEMPRE
+        ring.style.stroke = "var(--accent-color)"; 
+        
+        // Opcional: Efecto visual cuando acaba (stroke blanco al final)
+        if (timeLeft <= 0) ring.style.stroke = "#ffffff";
     }
 }
 
