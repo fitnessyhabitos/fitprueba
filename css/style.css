@@ -270,3 +270,65 @@ input:checked + .slider { background-color: var(--accent-color); } input:checked
     height: 30px;
     color: var(--warning-color);
 }
+
+/* ESTILOS CRONÓMETRO PRO */
+.timer-content {
+    background: linear-gradient(145deg, #1a1a1a, #0a0a0a);
+    border: 1px solid #333;
+    box-shadow: 0 0 30px rgba(0,0,0,0.8);
+    width: 90%;
+    max-width: 350px;
+}
+
+.timer-circle-container {
+    position: relative;
+    width: 200px;
+    height: 200px;
+    margin: 0 auto 25px auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.timer-svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    filter: drop-shadow(0 0 8px var(--accent-dim)); /* Glow effect */
+}
+
+.timer-progress-ring {
+    transition: stroke-dashoffset 1s linear, stroke 0.3s;
+}
+
+.timer-number {
+    font-family: 'Russo One', sans-serif; /* Tu fuente deportiva */
+    font-size: 4.5rem;
+    color: white;
+    z-index: 10;
+    text-shadow: 0 0 20px rgba(255,255,255,0.2);
+}
+
+.timer-controls {
+    display: grid;
+    grid-template-columns: 1fr 2fr 1fr;
+    gap: 10px;
+    align-items: center;
+}
+
+.btn-timer-skip {
+    background: white;
+    color: black;
+    font-weight: 900;
+    margin: 0;
+    border-radius: 50px; /* Botón pastilla */
+}
+
+.btn-timer-control {
+    margin: 0;
+    border-radius: 12px;
+    border-color: #444;
+    font-family: monospace;
+}
