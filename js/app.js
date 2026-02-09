@@ -4,7 +4,7 @@ import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, q
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 import { EXERCISES } from './data.js';
 
-console.log("⚡ FIT DATA: App Iniciada (Full Pro Mode - iOS Native Audio)...");
+console.log("⚡ FIT DATA: App Iniciada (Full Pro Mode - iOS Native Audio + Social)...");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDW40Lg6QvBc3zaaA58konqsH3QtDrRmyM",
@@ -38,6 +38,7 @@ let timerInt = null;
 let durationInt = null;
 let wakeLock = null;
 let totalRestTime = 60; // Para animación SVG
+let noteTargetIndex = null; // Para guardar notas de ejercicio
 
 let chartInstance = null; 
 let progressChart = null; 
@@ -634,6 +635,17 @@ window.loadProfile = async () => {
     document.getElementById('profile-name').innerText = userData.name;
     if(userData.photo) { document.getElementById('avatar-text').style.display='none'; document.getElementById('avatar-img').src = userData.photo; document.getElementById('avatar-img').style.display='block'; }
     updatePhotoDisplay(userData);
+    
+    // --- LÓGICA DE RANKING PERSONAL EN PERFIL ---
+    if(userData.rankingOptIn) {
+        document.getElementById('cfg-ranking').checked = true;
+        document.getElementById('top-btn-ranking').classList.remove('hidden');
+    } else {
+        document.getElementById('cfg-ranking').checked = false;
+        document.getElementById('top-btn-ranking').classList.add('hidden');
+    }
+    // --- FIN RANKING ---
+
     if(userData.showBio) {
         document.getElementById('user-bio-section').classList.remove('hidden');
         if(userData.bioHistory && userData.bioHistory.length > 0) renderBioChart('chartBio', userData.bioHistory);
@@ -837,7 +849,7 @@ window.startWorkout = async (rid) => {
                         });
                     }
                 }
-                return { n:name, img:data.img, mInfo: data.mInfo, type: data.type, video: data.v, sets: sets, superset: isSuperset }; 
+                return { n:name, img:data.img, mInfo: data.mInfo, type: data.type, video: data.v, sets: sets, superset: isSuperset, note: "" }; 
             })
         };
         saveLocalWorkout(); 
@@ -865,6 +877,99 @@ window.toggleAllSets = (exIdx) => {
     saveLocalWorkout();
     renderWorkout();
     if(newState) showToast("✅ Todas las series completadas");
+};
+
+// --- GESTIÓN DE NOTAS ---
+window.openNoteModal = (idx) => {
+    noteTargetIndex = idx;
+    const existingNote = activeWorkout.exs[idx].note || "";
+    document.getElementById('exercise-note-input').value = existingNote;
+    window.openModal('modal-note');
+};
+
+window.saveNote = () => {
+    if (noteTargetIndex === null) return;
+    const txt = document.getElementById('exercise-note-input').value.trim();
+    activeWorkout.exs[noteTargetIndex].note = txt; 
+    saveLocalWorkout();
+    renderWorkout(); 
+    window.closeModal('modal-note');
+    showToast(txt ? "📝 Nota guardada" : "🗑️ Nota borrada");
+};
+
+// --- GESTIÓN DE RANKING ---
+window.toggleRankingOptIn = async (val) => {
+    try {
+        await updateDoc(doc(db, "users", currentUser.uid), { rankingOptIn: val });
+        userData.rankingOptIn = val;
+        const btnRank = document.getElementById('top-btn-ranking');
+        if(val) btnRank.classList.remove('hidden'); else btnRank.classList.add('hidden');
+        showToast(val ? "🏆 Ahora participas en el Ranking" : "👻 Ranking desactivado");
+    } catch(e) { alert("Error actualizando perfil"); }
+};
+
+window.loadRankingView = async () => {
+    switchTab('ranking-view');
+    const list = document.getElementById('ranking-list');
+    list.innerHTML = '<div style="text-align:center; margin-top:50px;">Cargando titanes...</div>';
+    
+    try {
+        const q = query(
+            collection(db, "users"), 
+            where("rankingOptIn", "==", true),
+            orderBy("stats.totalKg", "desc"),
+            limit(20)
+        );
+        
+        const snap = await getDocs(q);
+        list.innerHTML = "";
+        
+        if(snap.empty) {
+            list.innerHTML = "<div class='tip-box'>Nadie se ha unido al ranking aún. ¡Sé el primero!</div>";
+            return;
+        }
+
+        let rank = 1;
+        snap.forEach(d => {
+            const u = d.data();
+            const isMe = d.id === currentUser.uid;
+            const tonnage = (u.stats?.totalKg / 1000).toFixed(1) + 't';
+            
+            let posClass = "";
+            if(rank === 1) posClass = "ranking-1";
+            if(rank === 2) posClass = "ranking-2";
+            if(rank === 3) posClass = "ranking-3";
+
+            let trophies = "";
+            const k = u.stats?.totalKg || 0;
+            if(k > 10000) trophies += "🥉";
+            if(k > 100000) trophies += "🥈";
+            if(k > 500000) trophies += "🥇";
+            if(k > 1000000) trophies += "💎";
+
+            const div = document.createElement('div');
+            div.className = "ranking-row";
+            if(isMe) div.style.borderColor = "var(--accent-color)";
+            
+            div.innerHTML = `
+                <div class="ranking-pos ${posClass}">#${rank}</div>
+                <div style="flex:1; margin-left:10px;">
+                    <div style="font-weight:bold; color:${isMe ? 'var(--accent-color)' : 'white'}">${u.name} ${trophies}</div>
+                    <div style="font-size:0.75rem; color:#666;">${u.stats?.workouts || 0} entrenos</div>
+                </div>
+                <div style="font-family:monospace; font-weight:bold; font-size:1.1rem;">${tonnage}</div>
+            `;
+            list.appendChild(div);
+            rank++;
+        });
+
+    } catch(e) {
+        if(e.message.includes("index")) {
+            list.innerHTML = `<div class="tip-box" onclick="window.open('${e.message.match(/https:\/\/\S+/)[0]}', '_blank')">⚠️ ADMIN: Falta Índice en Firebase.<br>Click para crear.</div>`;
+        } else {
+            list.innerHTML = "Error cargando ranking.";
+        }
+    }
 };
 
 window.initSwap = (idx) => {
@@ -905,6 +1010,11 @@ function renderWorkout() {
         const card = document.createElement('div'); card.className = 'card'; card.style.cssText = cardStyle;
         let videoBtnHtml = (userData.showVideos && e.video) ? `<button class="btn-small btn-outline" style="float:right; width:auto; margin:0; padding:2px 8px; border-color:#f00; color:#f55;" onclick="window.openVideo('${e.video}')">🎥</button>` : '';
         const swapBtn = `<button class="btn-small btn-outline" style="float:right; width:auto; margin:0 5px 0 0; padding:2px 8px; border-color:#aaa; color:#fff;" onclick="window.initSwap(${i})">🔄</button>`;
+        
+        // BOTÓN NOTA
+        const hasNote = e.note && e.note.length > 0;
+        const noteBtn = `<button class="ex-note-btn ${hasNote ? 'has-note' : ''}" onclick="window.openNoteModal(${i})">📝</button>`;
+
         let bars = (e.type === 'i') ? `<div class="mini-bar-label"><span>${e.mInfo.main}</span><span>100%</span></div><div class="mini-track"><div class="mini-fill fill-primary"></div></div>` : `<div class="mini-bar-label"><span>${e.mInfo.main}</span><span>70%</span></div><div class="mini-track"><div class="mini-fill fill-primary" style="width:70%"></div></div>`;
         let setsHtml = `<div class="set-header"><div>#</div><div>PREV</div><div>REPS</div><div>KG</div><div></div></div>`;
         
@@ -933,7 +1043,14 @@ function renderWorkout() {
             <button class="btn-set-control" onclick="removeSet(${i})">- Serie</button>
             <button class="btn-set-control" onclick="addSet(${i})">+ Serie</button>
         </div>`;
-        card.innerHTML = `<div class="workout-split"><div class="workout-visual"><img src="${e.img}" onerror="this.src='logo.png'"></div><div class="workout-bars" style="width:100%">${bars}</div></div><h3 style="margin-bottom:10px; border:none;">${e.n} ${videoBtnHtml} ${swapBtn}</h3>${setsHtml}`;
+        
+        card.innerHTML = `
+            <div class="workout-split"><div class="workout-visual"><img src="${e.img}" onerror="this.src='logo.png'"></div><div class="workout-bars" style="width:100%">${bars}</div></div>
+            <h3 style="margin-bottom:10px; border:none; display:flex; align-items:center; justify-content:space-between;">
+                <span>${e.n}</span>
+                <div>${noteBtn} ${videoBtnHtml} ${swapBtn}</div>
+            </h3>
+            ${setsHtml}`;
         c.appendChild(card);
         if (e.superset) c.innerHTML += connector; 
     });
@@ -1214,7 +1331,12 @@ window.finishWorkout = async (rpeVal) => {
                 muscleCounts[mName] = (muscleCounts[mName] || 0) + 1;
                 return { r, w, isDrop: !!set.isDrop, numDisplay: String(set.numDisplay || "") };
             });
-            return { n: e.n, s: completedSets, superset: !!e.superset };
+            return { 
+                n: e.n, 
+                s: completedSets, 
+                superset: !!e.superset,
+                note: e.note || "" // Guardar nota específica del ejercicio
+            };
         }).filter(e => e.s.length > 0);
 
         if (cleanLog.length === 0) { alert("No hay series completadas para guardar."); return; }
@@ -1446,10 +1568,35 @@ window.loadAdminUsers = async () => {
         let q = userData.role === 'assistant' ? query(collection(db, "users"), where("assignedCoach", "==", currentUser.uid)) : collection(db, "users");
         const s = await getDocs(q); l.innerHTML = '';
         s.forEach(d => {
-            const u = d.data(); let rowClass = "admin-user-row" + (d.id === currentUser.uid ? " is-me" : "") + (u.role === 'assistant' ? " is-coach" : "");
-            const div = document.createElement('div'); div.className = rowClass;
-            div.innerHTML=`<div><strong>${u.name}${d.id === currentUser.uid ? " (Tú)" : ""} ${u.role === 'assistant' ? '<span class="coach-badge">COACH</span>' : ''}</strong><br><small>${u.email}</small></div><button class="btn-outline btn-small">⚙️ FICHA</button>`;
-            div.onclick=()=>openCoachView(d.id,u); l.appendChild(div);
+            const u = d.data(); 
+            // Avatar Lógica
+            const avatarHtml = u.photo 
+                ? `<img src="${u.photo}" class="mini-avatar">` 
+                : `<div class="mini-avatar-placeholder">${u.name.charAt(0).toUpperCase()}</div>`;
+            
+            // Clase especial si soy yo o es coach
+            let rowClass = "admin-user-row";
+            if(d.id === currentUser.uid) rowClass += " is-me"; 
+            if(u.role === 'assistant') rowClass += " is-coach";
+
+            const div = document.createElement('div'); 
+            div.className = rowClass;
+            
+            // Layout Grid: Avatar | Info | Botón simple
+            div.innerHTML=`
+                ${avatarHtml}
+                <div style="overflow:hidden;">
+                    <div style="font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:white;">
+                        ${u.name} ${u.role === 'assistant' ? '🛡️' : ''}
+                    </div>
+                    <div style="font-size:0.75rem; color:#888; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                        ${u.email}
+                    </div>
+                </div>
+                <button class="btn-outline btn-small" style="margin:0; border-color:#444; color:#ccc;">⚙️</button>
+            `;
+            div.onclick = () => openCoachView(d.id, u); 
+            l.appendChild(div);
         });
     } catch (e) { l.innerHTML = 'Error de permisos.'; }
 };
@@ -1592,9 +1739,13 @@ window.viewWorkoutDetails = (title, dataStr, noteStr) => {
     let html = `<div class="note-display" style="background: #111; padding: 8px; border-radius: 8px; margin-bottom: 12px; border-left: 4px solid var(--accent-color); font-size:0.85rem;">📝 <b>Nota:</b> ${note}</div>`;
     
     data.forEach(ex => {
+        // --- AQUÍ ESTÁ LA NUEVA LÓGICA DE NOTAS POR EJERCICIO ---
+        let noteHtml = ex.note ? `<div class="note-badge">📝 "${ex.note}"</div>` : '';
+
         // 2. Encabezado de ejercicio más fino
         html += `<div style="margin-bottom:12px; border-bottom:1px solid #333; padding-bottom:8px;">
                     <strong style="color:var(--accent-color); font-size:0.95rem;">${ex.n}</strong>
+                    ${noteHtml}
                     <div style="display:flex; flex-wrap:wrap; gap:5px; margin-top:6px;">`;
         
         ex.s.forEach((set, i) => { 
