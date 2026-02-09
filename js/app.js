@@ -91,49 +91,95 @@ window.toggleElement = (id) => {
     if(el) el.classList.toggle('hidden');
 };
 
-// AUDIO HACK
+// --- AUDIO ENGINE (WEB AUDIO API - MODULAR) ---
+
+// 1. Audio de fondo "Keep-Alive" (Silencio infinito generado por código)
 function playSilentAudio() {
-    const aud = document.getElementById('silent-audio');
-    if(aud) { 
-        aud.volume = 0.01; 
-        aud.play().catch(e => console.log("Audio autoplay block")); 
+    try {
+        if (!audioCtx) {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
+        }
+
+        // Si el audio está suspendido (común en iOS), lo reanudamos
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+
+        // Creamos un buffer de 1 segundo de silencio absoluto
+        // Esto mantiene el thread de audio activo sin gastar batería decodificando MP3s
+        const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate, audioCtx.sampleRate);
+        const source = audioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.loop = true; // Bucle infinito
+        source.connect(audioCtx.destination);
+        source.start(0);
+
+        // Integración con Isla Dinámica / Pantalla de Bloqueo
         if ('mediaSession' in navigator) {
             navigator.mediaSession.metadata = new MediaMetadata({
-                title: 'Entrenando',
-                artist: 'Fit Data',
-                album: 'Sin descanso activo',
+                title: 'Entrenamiento en curso 🏋️',
+                artist: 'Fit Data Pro',
+                album: 'Keep-Alive Activo',
                 artwork: [{ src: 'logo.png', sizes: '512x512', type: 'image/png' }]
             });
             navigator.mediaSession.playbackState = "playing";
         }
+        console.log("🔊 Audio Keep-Alive activado (Web Audio API)");
+    } catch (e) {
+        console.error("Error al activar audio de fondo:", e);
     }
 }
 
+// 2. Desbloqueo inicial (User Interaction)
 function unlockAudio() {
     if(!audioCtx) {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         audioCtx = new AudioContext();
     }
-    if(audioCtx.state === 'suspended') { audioCtx.resume(); }
-    playSilentAudio();
+    // Intentamos resumir y luego lanzar el silencio
+    if(audioCtx.state === 'suspended') { 
+        audioCtx.resume().then(() => playSilentAudio());
+    } else {
+        playSilentAudio();
+    }
 }
+// Listeners para desbloquear audio en el primer toque
 document.addEventListener('touchstart', unlockAudio, {once:true});
 document.addEventListener('click', unlockAudio, {once:true});
 
+// 3. Generador de Beeps (Sin recursividad a unlockAudio)
 function play5Beeps() {
-    if(!audioCtx) unlockAudio();
-    if(audioCtx) {
-        const now = audioCtx.currentTime;
-        for(let i=0; i<5; i++) {
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            osc.type = 'square'; osc.frequency.value = 880; 
-            osc.connect(gain); gain.connect(audioCtx.destination);
-            const start = now + (i * 0.6); const end = start + 0.15;
-            osc.start(start); osc.stop(end);
-            gain.gain.setValueAtTime(0.5, start);
-            gain.gain.exponentialRampToValueAtTime(0.01, end);
-        }
+    // Verificación defensiva del contexto
+    if (!audioCtx) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContext();
+    }
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+
+    const now = audioCtx.currentTime;
+    for(let i=0; i<5; i++) {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        
+        osc.type = 'square'; // Onda cuadrada para que se oiga bien en gym
+        osc.frequency.setValueAtTime(880, now + (i * 0.6)); 
+        
+        osc.connect(gain); 
+        gain.connect(audioCtx.destination);
+        
+        const start = now + (i * 0.6); 
+        const end = start + 0.15;
+        
+        osc.start(start); 
+        osc.stop(end);
+        
+        // Evitar "clipping" (ruido al inicio/fin)
+        gain.gain.setValueAtTime(0, start);
+        gain.gain.linearRampToValueAtTime(0.5, start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.01, end);
     }
 }
 window.testSound = () => { play5Beeps(); };
@@ -145,8 +191,11 @@ window.enableNotifications = () => {
     }
     Notification.requestPermission().then((permission) => {
         if (permission === "granted") {
+            // Prueba de vibración
+            if("vibrate" in navigator) navigator.vibrate([200, 100, 200]);
+            
+            new Notification("Fit Data", { body: "✅ Notificaciones activadas.", icon: "logo.png" });
             alert("✅ Vinculado. El reloj vibrará al acabar.");
-            new Notification("Fit Data", { body: "Prueba de conexión exitosa.", icon: "logo.png" });
         } else {
             alert("❌ Permiso denegado. Revisa la configuración.");
         }
@@ -327,7 +376,6 @@ window.filterExercises = (t) => {
         const nameMatch = normalizeText(e.n).includes(cleanSearch);
         
         // 2. Normalizamos el grupo muscular (si existe)
-        // Esto permite que si escribes "Hombros", salgan todos los ejercicios de ese grupo
         const muscleMatch = e.m ? normalizeText(e.m).includes(cleanSearch) : false;
         
         // 3. Devolvemos true si coincide cualquiera de los dos
@@ -1018,7 +1066,7 @@ function openRest() {
             // FIN DEL DESCANSO
             window.closeTimer();
             
-            // A. Sonido
+            // A. Sonido (Llamamos a play5Beeps directamente)
             if(document.getElementById('cfg-sound') && document.getElementById('cfg-sound').checked) {
                 play5Beeps();
             }
@@ -1238,6 +1286,7 @@ window.finishWorkout = async (rpeVal) => {
         }
 
         const workoutNum = (userData.stats?.workouts || 0) + 1;
+        const volumeDisplay = totalKg >= 1000 ? (totalKg / 1000).toFixed(2) + "t" : totalKg.toFixed(0) + "kg";
 
         // Escritura en Firestore
         await addDoc(collection(db, "workouts"), {
@@ -1267,7 +1316,7 @@ window.finishWorkout = async (rpeVal) => {
 
         await updateDoc(doc(db, "users", currentUser.uid), updates);
 
-        showToast(`✅ Entreno guardado. ¡Buen trabajo!`);
+        showToast(`🏆 ¡Entreno nº ${workoutNum} completado! Volumen total: ${volumeDisplay}`);
         
         // Limpieza de estado
         localStorage.removeItem('fit_active_workout');
