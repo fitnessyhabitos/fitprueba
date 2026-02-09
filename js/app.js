@@ -36,8 +36,9 @@ let userData = null;
 let activeWorkout = null; 
 let timerInt = null; 
 let durationInt = null;
+let restEndTime = 0; 
 let wakeLock = null;
-let totalRestTime = 60; // Para la animación del círculo SVG
+let totalRestTime = 60; // NUEVO: Para la animación del círculo SVG
 
 let chartInstance = null; 
 let progressChart = null; 
@@ -91,30 +92,25 @@ window.toggleElement = (id) => {
     if(el) el.classList.toggle('hidden');
 };
 
-// --- AUDIO ENGINE (WEB AUDIO API - MODULAR & ROBUSTO) ---
+// --- AUDIO ENGINE (WEB AUDIO API - MODULAR) ---
 
-// 1. Audio de fondo "Keep-Alive" (Silencio infinito generado por código)
 function playSilentAudio() {
     try {
         if (!audioCtx) {
             const AudioContext = window.AudioContext || window.webkitAudioContext;
             audioCtx = new AudioContext();
         }
-
-        // Si el audio está suspendido (común en iOS), lo reanudamos
         if (audioCtx.state === 'suspended') {
             audioCtx.resume();
         }
-
-        // Creamos un buffer de 1 segundo de silencio absoluto
+        // Buffer de silencio infinito (Keep-Alive)
         const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate, audioCtx.sampleRate);
         const source = audioCtx.createBufferSource();
         source.buffer = buffer;
-        source.loop = true; // Bucle infinito
+        source.loop = true; 
         source.connect(audioCtx.destination);
         source.start(0);
 
-        // Integración con Isla Dinámica / Pantalla de Bloqueo
         if ('mediaSession' in navigator) {
             navigator.mediaSession.metadata = new MediaMetadata({
                 title: 'Entrenamiento en curso 🏋️',
@@ -124,32 +120,27 @@ function playSilentAudio() {
             });
             navigator.mediaSession.playbackState = "playing";
         }
-        console.log("🔊 Audio Keep-Alive activado (Web Audio API)");
+        console.log("🔊 Audio Keep-Alive activado");
     } catch (e) {
         console.error("Error al activar audio de fondo:", e);
     }
 }
 
-// 2. Desbloqueo inicial (User Interaction)
 function unlockAudio() {
     if(!audioCtx) {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         audioCtx = new AudioContext();
     }
-    // Intentamos resumir y luego lanzar el silencio
     if(audioCtx.state === 'suspended') { 
         audioCtx.resume().then(() => playSilentAudio());
     } else {
         playSilentAudio();
     }
 }
-// Listeners para desbloquear audio en el primer toque
 document.addEventListener('touchstart', unlockAudio, {once:true});
 document.addEventListener('click', unlockAudio, {once:true});
 
-// 3. Generador de Beeps (Sin recursividad a unlockAudio)
 function play5Beeps() {
-    // Verificación defensiva del contexto
     if (!audioCtx) {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         audioCtx = new AudioContext();
@@ -162,22 +153,16 @@ function play5Beeps() {
     for(let i=0; i<5; i++) {
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
-        
-        osc.type = 'square'; // Onda cuadrada para que se oiga bien en gym
+        osc.type = 'square'; 
         osc.frequency.setValueAtTime(880, now + (i * 0.6)); 
-        
         osc.connect(gain); 
         gain.connect(audioCtx.destination);
-        
         const start = now + (i * 0.6); 
         const end = start + 0.15;
-        
         osc.start(start); 
         osc.stop(end);
-        
-        // Evitar "clipping"
         gain.gain.setValueAtTime(0, start);
-        gain.gain.linearRampToValueAtTime(0.3, start + 0.02);
+        gain.gain.linearRampToValueAtTime(0.5, start + 0.02);
         gain.gain.exponentialRampToValueAtTime(0.01, end);
     }
 }
@@ -190,9 +175,7 @@ window.enableNotifications = () => {
     }
     Notification.requestPermission().then((permission) => {
         if (permission === "granted") {
-            // Prueba de vibración
             if("vibrate" in navigator) navigator.vibrate([200, 100, 200]);
-            
             new Notification("Fit Data", { body: "✅ Notificaciones activadas.", icon: "logo.png" });
             alert("✅ Vinculado. El reloj vibrará al acabar.");
         } else {
@@ -251,10 +234,7 @@ function checkPhotoReminder() {
 window.switchTab = (t) => {
     document.querySelectorAll('.view-container').forEach(e => e.classList.remove('active'));
     document.getElementById(t).classList.add('active');
-    
-    // Reset scroll interno
     document.getElementById('main-container').scrollTop = 0;
-    
     document.querySelectorAll('.top-nav-item').forEach(n => n.classList.remove('active'));
     
     if (t === 'routines-view') document.getElementById('top-btn-routines').classList.add('active');
@@ -356,7 +336,6 @@ window.openEditor = async (id = null) => {
     } else {
         currentRoutineSelections = [];
     }
-
     window.currentRoutineSelections = currentRoutineSelections;
     renderExercises(EXERCISES); 
     renderSelectedSummary();
@@ -439,10 +418,8 @@ window.saveRoutine = async () => {
     const n = document.getElementById('editor-name').value;
     const s = window.currentRoutineSelections; 
     if(!n || s.length === 0) return alert("❌ Faltan datos (Nombre o Ejercicios)");
-    
     const btn = document.getElementById('btn-save-routine'); 
     btn.innerText = "💾 GUARDANDO...";
-    
     try {
         const data = { 
             uid: currentUser.uid, 
@@ -950,7 +927,7 @@ window.addDropset = (exIdx, setIdx) => {
 
 window.uS = (i,j,k,v) => { activeWorkout.exs[i].sets[j][k]=v; saveLocalWorkout(); };
 
-// --- LOGICA DE RÉCORD 1RM (Fuerza Real) & CONFETI ---
+// --- NUEVA LÓGICA DE 1RM (Fuerza Real) & CONFETI ---
 window.tS = async (i, j) => { 
     const s = activeWorkout.exs[i].sets[j]; 
     const exerciseName = activeWorkout.exs[i].n;
@@ -981,7 +958,7 @@ window.tS = async (i, j) => {
                 }
                 showToast(`🔥 ¡NUEVO NIVEL DE FUERZA!<br>1RM Est: <b>${estimated1RM}kg</b> en ${exerciseName}`);
             } 
-            // Si no es 1RM, revisamos si es PR de peso
+            // Si no es 1RM, revisamos si es PR de peso absoluto
             else {
                 const currentWeightPR = userData.prs ? (userData.prs[exerciseName] || 0) : 0;
                 if (weight > currentWeightPR) {
@@ -997,8 +974,6 @@ window.tS = async (i, j) => {
     saveLocalWorkout(); 
     renderWorkout();
 };
-
-// --- GESTIÓN DE NOTIFICACIONES Y MEDIA SESSION (ISLA DINÁMICA) ---
 
 window.requestNotifPermission = () => {
     if ("Notification" in window) {
@@ -1023,20 +998,22 @@ const updateMediaSession = (titleText, artistText) => {
     }
 };
 
-// --- VISUALES DEL CRONÓMETRO SVG ---
+// --- VISUALES DEL CRONÓMETRO SVG (ESTILO DEPORTIVO) ---
 function updateTimerVisuals(timeLeft) {
     const display = document.getElementById('timer-display');
     const ring = document.getElementById('timer-progress-ring');
     
+    // Si tienes el nuevo HTML con SVG, actualizamos el texto dentro
     if(display) display.innerText = timeLeft;
     
+    // Si existe el anillo SVG (porque cambiaste el HTML), lo animamos
     if(ring) {
         // Circunferencia r=90 -> 2 * PI * 90 ≈ 565
         const circumference = 565; 
         const offset = circumference - (timeLeft / totalRestTime) * circumference;
         ring.style.strokeDashoffset = offset;
 
-        // Cambio de color dinámico
+        // Cambio de color dinámico (Verde -> Naranja -> Rojo)
         if (timeLeft > totalRestTime * 0.5) {
             ring.style.stroke = "var(--success-color)";
         } else if (timeLeft > 10) {
@@ -1052,7 +1029,7 @@ function openRest() {
     playSilentAudio(); 
     
     let left = parseInt(userData.restTime) || 60;
-    totalRestTime = left; // Set for SVG calc
+    totalRestTime = left; // Guardamos el total para calcular el % del anillo
     
     updateTimerVisuals(left);
     updateMediaSession(`DESCANSO: ${left}s`, "Recuperando...");
@@ -1100,7 +1077,7 @@ window.addRestTime = (s) => {
     clearInterval(timerInt);
     let currentVal = parseInt(document.getElementById('timer-display').innerText) || 0;
     let newTime = currentVal + s;
-    if (s > 0) totalRestTime += s; // Ajustar total si se añade tiempo para suavizar animación
+    if (s > 0) totalRestTime += s; // Aumentamos el total para suavizar la animación
     
     updateTimerVisuals(newTime);
     updateMediaSession(`DESCANSO: ${newTime}s`, "Tiempo añadido");
