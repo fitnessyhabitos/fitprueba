@@ -4,7 +4,7 @@ import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, q
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 import { EXERCISES } from './data.js';
 
-console.log("⚡ FIT DATA: App Iniciada (High Performance Mode)...");
+console.log("⚡ FIT DATA: App Iniciada (Full Performance Mode)...");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDW40Lg6QvBc3zaaA58konqsH3QtDrRmyM",
@@ -36,9 +36,8 @@ let userData = null;
 let activeWorkout = null; 
 let timerInt = null; 
 let durationInt = null;
-let restEndTime = 0; 
 let wakeLock = null;
-let totalRestTime = 60; // NUEVO: Para la animación del círculo SVG
+let totalRestTime = 60; // Para animación SVG
 
 let chartInstance = null; 
 let progressChart = null; 
@@ -92,7 +91,7 @@ window.toggleElement = (id) => {
     if(el) el.classList.toggle('hidden');
 };
 
-// --- AUDIO ENGINE (WEB AUDIO API - MODULAR) ---
+// --- AUDIO ENGINE (WEB AUDIO API) ---
 
 function playSilentAudio() {
     try {
@@ -103,7 +102,6 @@ function playSilentAudio() {
         if (audioCtx.state === 'suspended') {
             audioCtx.resume();
         }
-        // Buffer de silencio infinito (Keep-Alive)
         const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate, audioCtx.sampleRate);
         const source = audioCtx.createBufferSource();
         source.buffer = buffer;
@@ -120,9 +118,8 @@ function playSilentAudio() {
             });
             navigator.mediaSession.playbackState = "playing";
         }
-        console.log("🔊 Audio Keep-Alive activado");
     } catch (e) {
-        console.error("Error al activar audio de fondo:", e);
+        console.error("Error Audio:", e);
     }
 }
 
@@ -845,6 +842,16 @@ window.addSet = (exIdx) => {
 };
 window.removeSet = (exIdx) => { if(activeWorkout.exs[exIdx].sets.length > 1) { activeWorkout.exs[exIdx].sets.pop(); saveLocalWorkout(); renderWorkout(); } };
 
+window.toggleAllSets = (exIdx) => {
+    const ex = activeWorkout.exs[exIdx];
+    const allDone = ex.sets.every(s => s.d);
+    const newState = !allDone;
+    ex.sets.forEach(s => { s.d = newState; });
+    saveLocalWorkout();
+    renderWorkout();
+    if(newState) showToast("✅ Todas las series completadas");
+};
+
 window.initSwap = (idx) => {
     swapTargetIndex = idx;
     const currentEx = activeWorkout.exs[idx];
@@ -905,7 +912,12 @@ function renderWorkout() {
                 </div>
             </div>`;
         });
-        setsHtml += `<div class="sets-actions"><button class="btn-set-control" onclick="removeSet(${i})">- Serie</button><button class="btn-set-control" onclick="addSet(${i})">+ Serie</button></div>`;
+        setsHtml += `
+        <div class="sets-actions">
+            <button class="btn-set-control" style="border-color:var(--success-color); color:var(--success-color); margin-right:auto;" onclick="window.toggleAllSets(${i})">✓ TODO</button>
+            <button class="btn-set-control" onclick="removeSet(${i})">- Serie</button>
+            <button class="btn-set-control" onclick="addSet(${i})">+ Serie</button>
+        </div>`;
         card.innerHTML = `<div class="workout-split"><div class="workout-visual"><img src="${e.img}" onerror="this.src='logo.png'"></div><div class="workout-bars" style="width:100%">${bars}</div></div><h3 style="margin-bottom:10px; border:none;">${e.n} ${videoBtnHtml} ${swapBtn}</h3>${setsHtml}`;
         c.appendChild(card);
         if (e.superset) c.innerHTML += connector; 
@@ -927,7 +939,7 @@ window.addDropset = (exIdx, setIdx) => {
 
 window.uS = (i,j,k,v) => { activeWorkout.exs[i].sets[j][k]=v; saveLocalWorkout(); };
 
-// --- NUEVA LÓGICA DE 1RM (Fuerza Real) & CONFETI ---
+// --- LÓGICA DE RÉCORD 1RM (Fuerza Real) & CONFETI ---
 window.tS = async (i, j) => { 
     const s = activeWorkout.exs[i].sets[j]; 
     const exerciseName = activeWorkout.exs[i].n;
@@ -998,28 +1010,23 @@ const updateMediaSession = (titleText, artistText) => {
     }
 };
 
-// --- VISUALES DEL CRONÓMETRO SVG (SOLO ROJO) ---
+// --- VISUALES DEL CRONÓMETRO SVG (ROJO CORPORATIVO) ---
 function updateTimerVisuals(timeLeft) {
     const display = document.getElementById('timer-display');
     const ring = document.getElementById('timer-progress-ring');
     
     if(display) {
         display.innerText = timeLeft;
-        // Efecto de parpadeo en el texto si queda poco tiempo (< 5s)
+        // Parpadeo final
         display.style.color = timeLeft <= 5 ? "#fff" : "var(--accent-color)";
         display.style.textShadow = timeLeft <= 5 ? "0 0 20px #fff" : "none";
     }
     
     if(ring) {
-        // Circunferencia r=90 -> 2 * PI * 90 ≈ 565
         const circumference = 565; 
         const offset = circumference - (timeLeft / totalRestTime) * circumference;
         ring.style.strokeDashoffset = offset;
-
-        // FORZAMOS COLOR ROJO DE LA MARCA SIEMPRE
-        ring.style.stroke = "var(--accent-color)"; 
-        
-        // Opcional: Efecto visual cuando acaba (stroke blanco al final)
+        ring.style.stroke = "var(--accent-color)"; // SIEMPRE ROJO
         if (timeLeft <= 0) ring.style.stroke = "#ffffff";
     }
 }
@@ -1029,7 +1036,7 @@ function openRest() {
     playSilentAudio(); 
     
     let left = parseInt(userData.restTime) || 60;
-    totalRestTime = left; // Guardamos el total para calcular el % del anillo
+    totalRestTime = left; 
     
     updateTimerVisuals(left);
     updateMediaSession(`DESCANSO: ${left}s`, "Recuperando...");
@@ -1077,7 +1084,7 @@ window.addRestTime = (s) => {
     clearInterval(timerInt);
     let currentVal = parseInt(document.getElementById('timer-display').innerText) || 0;
     let newTime = currentVal + s;
-    if (s > 0) totalRestTime += s; // Aumentamos el total para suavizar la animación
+    if (s > 0) totalRestTime += s; 
     
     updateTimerVisuals(newTime);
     updateMediaSession(`DESCANSO: ${newTime}s`, "Tiempo añadido");
@@ -1167,7 +1174,7 @@ window.promptRPE = () => {
 
 function showToast(msg) {
     const container = document.getElementById('toast-container') || createToastContainer();
-    const t = document.createElement('div'); t.className = 'toast-msg'; t.innerHTML = msg;
+    const t = document.createElement('div'); t.className = 'toast-msg'; t.innerText = msg;
     container.appendChild(t);
     setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 500); }, 4000);
 }
