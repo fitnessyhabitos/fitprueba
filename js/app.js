@@ -4,7 +4,7 @@ import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, q
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 import { EXERCISES } from './data.js';
 
-console.log("⚡ FIT DATA: App Iniciada (Versión Final: Librería Editable + Envíos)...");
+console.log("⚡ FIT DATA: App Iniciada (Audio LockScreen + Admin Full)...");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDW40Lg6QvBc3zaaA58konqsH3QtDrRmyM",
@@ -59,7 +59,7 @@ let currentRoutineSelections = [];
 window.currentRoutineSelections = currentRoutineSelections; 
 let swapTargetIndex = null; 
 
-// Variables para Asignación Masiva (Planes o Rutinas)
+// Variables de Asignación Masiva
 let selectedPlanForMassAssign = null; 
 let selectedRoutineForMassAssign = null;
 let assignMode = 'plan'; // 'plan' o 'routine'
@@ -84,6 +84,7 @@ function initCommunityListener() {
                 const workoutTime = w.date ? w.date.seconds : 0;
                 if (now - workoutTime < 60 && w.uid !== currentUser.uid) {
                     showToast(`🔥 Alguien terminó: ${w.routine}`);
+                    // Sonido sutil de notificación
                     if(document.getElementById('cfg-sound')?.checked) {
                          const osc = audioCtx?.createOscillator();
                          if(osc) {
@@ -124,12 +125,15 @@ window.toggleElement = (id) => {
     if(el) el.classList.toggle('hidden');
 };
 
-// --- AUDIO ENGINE ---
-const SILENT_MP3_URL = "https://raw.githubusercontent.com/anars/blank-audio/master/10-seconds-of-silence.mp3";
+// --- AUDIO ENGINE MEJORADO (LOCK SCREEN + COUNTDOWN) ---
+// Usamos un mp3 de 1 minuto para asegurar estabilidad en iOS Lock Screen
+const SILENT_MP3_URL = "https://raw.githubusercontent.com/anars/blank-audio/master/1-minute-of-silence.mp3";
 let htmlAudioElement = new Audio(SILENT_MP3_URL);
 htmlAudioElement.loop = true;
 htmlAudioElement.preload = 'auto';
 htmlAudioElement.volume = 1.0; 
+
+let lastBeepSecond = -1; // Control para no repetir beeps en el mismo segundo
 
 function initAudioEngine() {
     if (!audioCtx) {
@@ -137,44 +141,70 @@ function initAudioEngine() {
         audioCtx = new AudioContext();
     }
     if (audioCtx.state === 'suspended') audioCtx.resume();
+    
     htmlAudioElement.play().then(() => {
         if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = "playing";
+            updateMediaSessionMetadata(totalRestTime || 60, 0);
+            
             navigator.mediaSession.setActionHandler('play', () => { 
                 htmlAudioElement.play(); navigator.mediaSession.playbackState = "playing"; 
             });
             navigator.mediaSession.setActionHandler('pause', () => { 
-                navigator.mediaSession.playbackState = "playing"; 
+                navigator.mediaSession.playbackState = "paused"; 
             });
             navigator.mediaSession.setActionHandler('previoustrack', () => window.addRestTime(-10));
             navigator.mediaSession.setActionHandler('nexttrack', () => window.addRestTime(10));
-            navigator.mediaSession.metadata = new MediaMetadata({
-                title: 'Fit Data Pro', artist: 'Listo para entrenar',
-                artwork: [{ src: 'logo.png', sizes: '512x512', type: 'image/png' }]
-            });
         }
-    }).catch(e => { console.log("Esperando interacción de usuario..."); });
+    }).catch(e => console.log("Esperando interacción de usuario..."));
+}
+
+function updateMediaSessionMetadata(duration, position) {
+    if ('mediaSession' in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+            title: `Descanso: ${Math.ceil(duration - position)}s`,
+            artist: 'Fit Data Pro',
+            album: 'Recuperando...',
+            artwork: [{ src: 'logo.png', sizes: '512x512', type: 'image/png' }]
+        });
+        navigator.mediaSession.setPositionState({
+            duration: duration,
+            playbackRate: 1,
+            position: position
+        });
+    }
+}
+
+// Función de Beep (TIC) para cuenta atrás
+function playTickSound(isFinal = false) {
+    if(!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    
+    // Agudo para cuenta atrás, Grave para final
+    osc.frequency.value = isFinal ? 600 : 1000; 
+    osc.type = isFinal ? 'square' : 'sine';
+    
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    
+    const now = audioCtx.currentTime;
+    osc.start(now);
+    
+    const duration = isFinal ? 0.8 : 0.1;
+    
+    gain.gain.setValueAtTime(0.5, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+    osc.stop(now + duration);
+    
+    if("vibrate" in navigator) navigator.vibrate(isFinal ? [500] : [50]);
 }
 
 document.body.addEventListener('touchstart', initAudioEngine, {once:true});
 document.body.addEventListener('click', initAudioEngine, {once:true});
 
-function play5Beeps() {
-    if(!audioCtx) { initAudioEngine(); return; }
-    if(audioCtx.state === 'suspended') audioCtx.resume();
-    const now = audioCtx.currentTime;
-    for(let i=0; i<5; i++) {
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.type = 'square'; osc.frequency.setValueAtTime(880, now + (i * 0.6)); 
-        osc.connect(gain); gain.connect(audioCtx.destination);
-        const start = now + (i * 0.6); const end = start + 0.15;
-        osc.start(start); osc.stop(end);
-        gain.gain.setValueAtTime(0, start);
-        gain.gain.linearRampToValueAtTime(0.5, start + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.01, end);
-    }
-}
-window.testSound = () => { play5Beeps(); };
+// Reemplazo de play5Beeps por el nuevo sistema
+window.testSound = () => { playTickSound(false); setTimeout(() => playTickSound(true), 500); };
 
 window.enableNotifications = () => {
     if (!("Notification" in window)) return alert("Tu dispositivo no soporta notificaciones.");
@@ -494,7 +524,6 @@ window.loadProfile = async () => {
     
     // --- PHOTO REMINDER AVISO ---
     if(!userData.photo) {
-        // Inyectar banner si no hay foto
         const header = document.querySelector('.profile-header');
         if(!document.getElementById('photo-nudge')) {
              const nudge = document.createElement('div');
@@ -709,38 +738,61 @@ function openRest() {
     let duration = parseInt(userData.restTime) || 60;
     totalRestTime = duration; 
     restEndTime = Date.now() + (duration * 1000);
+    lastBeepSecond = -1; // Resetear control de beeps
     updateTimerVisuals(duration);
-    if ('mediaSession' in navigator) { navigator.mediaSession.metadata = new MediaMetadata({ title: `Descanso...`, artist: 'Fit Data Pro', album: 'Recuperando', artwork: [{ src: 'logo.png', sizes: '512x512', type: 'image/png' }] }); navigator.mediaSession.setPositionState({ duration: duration, playbackRate: 1, position: 0 }); }
+    
     if(timerInt) clearInterval(timerInt);
+    
+    // Intervalo más rápido (250ms) para detectar el cambio de segundo con precisión
     timerInt = setInterval(() => {
-        const now = Date.now(); const left = Math.ceil((restEndTime - now) / 1000);
-        if (left >= 0) { updateTimerVisuals(left); } 
-        else {
-            window.closeTimer();
-            if(document.getElementById('cfg-sound') && document.getElementById('cfg-sound').checked) { play5Beeps(); }
-            if ("vibrate" in navigator) navigator.vibrate([200, 100, 200]);
-            if ("Notification" in window && Notification.permission === "granted") { try { new Notification("¡A LA SERIE!", { body: "Descanso finalizado.", icon: "logo.png" }); } catch(e) {} }
+        const now = Date.now();
+        const leftMs = restEndTime - now; 
+        const leftSec = Math.ceil(leftMs / 1000);
+        
+        if (leftSec >= 0) { 
+             updateTimerVisuals(leftSec);
+             // Actualizar metadatos cada segundo para la lock screen
+             if (leftSec !== lastBeepSecond) {
+                 updateMediaSessionMetadata(totalRestTime, totalRestTime - leftSec);
+             }
+        } 
+
+        // --- LÓGICA DE CUENTA ATRÁS (5, 4, 3, 2, 1) ---
+        if (leftSec <= 5 && leftSec > 0) {
+            if (leftSec !== lastBeepSecond) {
+                playTickSound(false);
+                lastBeepSecond = leftSec;
+            }
         }
-    }, 1000);
+
+        // --- FINALIZADO ---
+        if (leftSec <= 0) {
+            window.closeTimer();
+            playTickSound(true); // Beep final largo
+            if ("Notification" in window && Notification.permission === "granted") {
+                 try { new Notification("¡A LA SERIE!", { body: "Descanso finalizado.", icon: "logo.png" }); } catch(e) {}
+            }
+        }
+    }, 250); 
 }
 
 window.closeTimer = () => {
     clearInterval(timerInt); window.closeModal('modal-timer');
-    if ('mediaSession' in navigator) { navigator.mediaSession.metadata = new MediaMetadata({ title: 'Entrenando 💪', artist: 'Fit Data Pro', album: 'Dale duro', artwork: [{ src: 'logo.png', sizes: '512x512', type: 'image/png' }] }); navigator.mediaSession.setPositionState({ duration: 100, playbackRate: 0, position: 0 }); }
+    // No pausamos el audio para mantener vivo el contexto
+    if ('mediaSession' in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({ title: '¡A entrenar!', artist: 'Fit Data Pro', artwork: [{ src: 'logo.png', sizes: '512x512', type: 'image/png' }] });
+        navigator.mediaSession.playbackState = "paused"; // Visualmente pausado
+    }
 };
 
 window.addRestTime = (s) => { 
-    clearInterval(timerInt);
     restEndTime += (s * 1000);
-    const now = Date.now(); const left = Math.ceil((restEndTime - now) / 1000);
     if(s > 0) totalRestTime += s; 
+    // No es necesario reiniciar el intervalo porque usa tiempo absoluto (restEndTime)
+    const now = Date.now();
+    const left = Math.ceil((restEndTime - now) / 1000);
     updateTimerVisuals(left);
-    if ('mediaSession' in navigator) { const currentPos = totalRestTime - left; navigator.mediaSession.setPositionState({ duration: totalRestTime, playbackRate: 1, position: Math.max(0, currentPos) }); }
-    timerInt = setInterval(() => {
-        const currentNow = Date.now(); const currentLeft = Math.ceil((restEndTime - currentNow) / 1000);
-        if(currentLeft >= 0) { updateTimerVisuals(currentLeft); } 
-        else { window.closeTimer(); if(document.getElementById('cfg-sound').checked) play5Beeps(); if("vibrate" in navigator) navigator.vibrate([500]); }
-    }, 1000);
+    updateMediaSessionMetadata(totalRestTime, totalRestTime - left);
 };
 
 function startTimerMini() { if(durationInt) clearInterval(durationInt); const d = document.getElementById('mini-timer'); if(!activeWorkout.startTime) activeWorkout.startTime = Date.now(); const startTime = activeWorkout.startTime; durationInt = setInterval(()=>{ const diff = Math.floor((Date.now() - startTime)/1000); const m = Math.floor(diff/60); const s = diff % 60; if(d) d.innerText = `${m}:${s.toString().padStart(2,'0')}`; }, 1000); }
@@ -1038,7 +1090,6 @@ async function openCoachView(uid, u) {
     if(freshU.skinfoldHistory) { document.getElementById('coach-view-skinfolds').classList.remove('hidden'); const dataF = freshU.skinfoldHistory.map(f => f.fat || 0); const labels = freshU.skinfoldHistory.map(f => new Date(f.date.seconds*1000).toLocaleDateString()); if(coachFatChart) coachFatChart.destroy(); coachFatChart = new Chart(document.getElementById('coachFatChart'), { type: 'line', data: { labels: labels, datasets: [{ label: '% Grasa', data: dataF, borderColor: '#ffaa00' }] }, options: { maintainAspectRatio: false } }); }
     if(freshU.measureHistory) { document.getElementById('coach-view-measures').classList.remove('hidden'); renderMeasureChart('coachMeasuresChart', freshU.measureHistory); }
     
-    // --- RENDERIZADO DEL MAPA MUSCULAR COACH (RADAR CHART) ---
     renderMuscleRadar('coachMuscleChart', freshU.muscleStats || {});
 
     const st = freshU.stats || {}; document.getElementById('coach-stats-text').innerHTML = `<div class="stat-pill"><b>${st.workouts||0}</b><span>ENTRENOS</span></div><div class="stat-pill"><b>${(st.totalKg/1000||0).toFixed(1)}t</b><span>CARGA</span></div><div class="stat-pill"><b>${freshU.age||'N/D'}</b><span>AÑOS</span></div>`;
@@ -1148,5 +1199,4 @@ document.getElementById('btn-register').onclick=async()=>{
         });
     }catch(e){alert("Error: " + e.message);}
 };
-
 document.getElementById('btn-login').onclick=()=>signInWithEmailAndPassword(auth,document.getElementById('login-email').value,document.getElementById('login-pass').value).catch(e=>alert(e.message));
