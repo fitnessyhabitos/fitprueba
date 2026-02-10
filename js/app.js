@@ -4,7 +4,7 @@ import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, q
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 import { EXERCISES } from './data.js';
 
-console.log("⚡ FIT DATA: App Iniciada (iOS Native Audio Fixed + Library Pro)...");
+console.log("⚡ FIT DATA: App Iniciada (Pro Mode - Atomic Timer)...");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDW40Lg6QvBc3zaaA58konqsH3QtDrRmyM",
@@ -37,8 +37,9 @@ let activeWorkout = null;
 let timerInt = null; 
 let durationInt = null;
 let wakeLock = null;
-let totalRestTime = 60; 
-let noteTargetIndex = null;
+let totalRestTime = 60; // Para animación SVG
+let restEndTime = 0;    // VARIABLE CRÍTICA PARA EL FIX DE TIEMPO
+let noteTargetIndex = null; 
 
 // Filtros Ranking
 let rankFilterTime = 'all';    
@@ -67,12 +68,10 @@ let currentRoutineSelections = [];
 window.currentRoutineSelections = currentRoutineSelections; 
 let swapTargetIndex = null; 
 let selectedPlanForMassAssign = null; 
-// Nueva variable para diferenciar si asignamos un PLAN o una RUTINA ÚNICA desde la librería
-let assignMode = 'plan'; // 'plan' o 'single_routine'
-let selectedRoutineForMassAssign = null; 
 
-// --- SCROLL LOCK IOS ---
+// --- GESTIÓN DE SCROLL LOCK (SOPORTE IOS) ---
 let scrollPos = 0;
+
 window.openModal = (id) => {
     scrollPos = window.pageYOffset;
     document.body.style.top = `-${scrollPos}px`;
@@ -80,6 +79,7 @@ window.openModal = (id) => {
     const m = document.getElementById(id);
     if(m) m.classList.add('active');
 };
+
 window.closeModal = (id) => {
     const m = document.getElementById(id);
     if(m) m.classList.remove('active');
@@ -92,89 +92,108 @@ const normalizeText = (text) => {
     if(!text) return "";
     return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 };
+
 window.toggleElement = (id) => {
     const el = document.getElementById(id);
     if(el) el.classList.toggle('hidden');
 };
 
-// --- AUDIO ENGINE (IOS FIX DEFINITIVO) ---
-// Usamos un MP3 válido, probado para mantener sesión en Safari Mobile.
-const SILENT_MP3_URL = "https://raw.githubusercontent.com/anars/blank-audio/master/10-seconds-of-silence.mp3";
-let globalAudio = new Audio(SILENT_MP3_URL);
-globalAudio.loop = true;
-globalAudio.preload = 'auto';
+// --- AUDIO ENGINE (HYBRID: HTML5 AUDIO + WEB AUDIO API) ---
+const SILENT_MP3 = "data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjIwLjEwMAAAAAAAAAAAAAAA//oeEsAAAAAAAASwgAAAAEAAGiAAAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//oeEsAA1gAAASwgAAAAEAAGiAAAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//oeEsAA1gAAASwgAAAAEAAGiAAAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
 
-// Función para inicializar el audio en el PRIMER toque (Vital para iOS)
-function initAudioEngine() {
-    // 1. Web Audio API (Efectos)
+let htmlAudioElement = null;
+
+function playSilentAudio() {
+    if (!htmlAudioElement) {
+        htmlAudioElement = new Audio(SILENT_MP3);
+        htmlAudioElement.loop = true;
+        htmlAudioElement.preload = 'auto';
+        htmlAudioElement.volume = 1.0; 
+    }
+
+    htmlAudioElement.play().then(() => {
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.setActionHandler('play', () => { 
+                htmlAudioElement.play();
+                navigator.mediaSession.playbackState = "playing"; 
+            });
+            navigator.mediaSession.setActionHandler('pause', () => { 
+                navigator.mediaSession.playbackState = "playing"; 
+            });
+            navigator.mediaSession.setActionHandler('previoustrack', () => window.addRestTime(-10));
+            navigator.mediaSession.setActionHandler('nexttrack', () => window.addRestTime(10));
+
+            navigator.mediaSession.metadata = new MediaMetadata({
+                title: 'Entrenamiento Activo',
+                artist: 'Fit Data Pro',
+                album: 'Toque para volver',
+                artwork: [{ src: 'logo.png', sizes: '512x512', type: 'image/png' }]
+            });
+        }
+    }).catch(e => console.log("Audio background pendiente de interacción...", e));
+
+    if (!audioCtx) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContext();
+    }
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+}
+
+function unlockAudio() {
+    playSilentAudio();
+    if(!audioCtx) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContext();
+    }
+    if(audioCtx.state === 'suspended') { 
+        audioCtx.resume();
+    }
+}
+
+document.addEventListener('touchstart', unlockAudio, {once:true});
+document.addEventListener('click', unlockAudio, {once:true});
+
+function play5Beeps() {
     if (!audioCtx) {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         audioCtx = new AudioContext();
     }
     if (audioCtx.state === 'suspended') audioCtx.resume();
 
-    // 2. HTML5 Audio (Isla Dinámica)
-    // Intentamos reproducir y pausar inmediatamente para "calentar" el canal
-    globalAudio.play().then(() => {
-        // Configuramos handlers UNA sola vez
-        if ('mediaSession' in navigator) {
-            navigator.mediaSession.setActionHandler('play', () => { 
-                globalAudio.play();
-                navigator.mediaSession.playbackState = "playing"; 
-            });
-            navigator.mediaSession.setActionHandler('pause', () => { 
-                navigator.mediaSession.playbackState = "playing"; // Evitar pausa
-            });
-            navigator.mediaSession.setActionHandler('previoustrack', () => window.addRestTime(-10));
-            navigator.mediaSession.setActionHandler('nexttrack', () => window.addRestTime(10));
-        }
-    }).catch(() => { /* Esperando interacción real */ });
-}
-
-// Listeners globales agresivos para desbloquear audio
-document.body.addEventListener('touchstart', initAudioEngine, {once:true});
-document.body.addEventListener('click', initAudioEngine, {once:true});
-
-// Función para activar el modo "Descanso" (Activa la sesión visual)
-function activateMediaSession(title) {
-    globalAudio.play().catch(e => console.log("Audio play blocked", e));
-    if ('mediaSession' in navigator) {
-        navigator.mediaSession.metadata = new MediaMetadata({
-            title: title,
-            artist: 'Fit Data Pro',
-            album: 'Entrenamiento',
-            artwork: [{ src: 'logo.png', sizes: '512x512', type: 'image/png' }]
-        });
-        navigator.mediaSession.playbackState = "playing";
-    }
-}
-
-function play5Beeps() {
-    if(!audioCtx) return;
     const now = audioCtx.currentTime;
     for(let i=0; i<5; i++) {
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
         osc.type = 'square'; 
         osc.frequency.setValueAtTime(880, now + (i * 0.6)); 
-        osc.connect(gain); gain.connect(audioCtx.destination);
-        const start = now + (i * 0.6); const end = start + 0.15;
-        osc.start(start); osc.stop(end);
+        osc.connect(gain); 
+        gain.connect(audioCtx.destination);
+        const start = now + (i * 0.6); 
+        const end = start + 0.15;
+        osc.start(start); 
+        osc.stop(end);
         gain.gain.setValueAtTime(0, start);
         gain.gain.linearRampToValueAtTime(0.5, start + 0.02);
         gain.gain.exponentialRampToValueAtTime(0.01, end);
     }
 }
-window.testSound = () => { if(audioCtx) audioCtx.resume(); play5Beeps(); };
+window.testSound = () => { play5Beeps(); };
 
 window.enableNotifications = () => {
-    if (!("Notification" in window)) return alert("Tu dispositivo no soporta notificaciones.");
-    Notification.requestPermission().then((p) => {
-        if (p === "granted") {
-            if("vibrate" in navigator) navigator.vibrate([200]);
-            new Notification("Fit Data", { body: "✅ Notificaciones listas.", icon: "logo.png" });
-            alert("✅ Vinculado.");
-        } else alert("❌ Permiso denegado.");
+    if (!("Notification" in window)) {
+        alert("Tu dispositivo no soporta notificaciones web. (En iPhone usa 'Añadir a Inicio')");
+        return;
+    }
+    Notification.requestPermission().then((permission) => {
+        if (permission === "granted") {
+            if("vibrate" in navigator) navigator.vibrate([200, 100, 200]);
+            new Notification("Fit Data", { body: "✅ Notificaciones activadas.", icon: "logo.png" });
+            alert("✅ Vinculado. El reloj vibrará al acabar.");
+        } else {
+            alert("❌ Permiso denegado. Revisa la configuración.");
+        }
     });
 };
 
@@ -185,16 +204,21 @@ onAuthStateChanged(auth, async (user) => {
         if(snap.exists()){
             userData = snap.data();
             checkPhotoReminder();
+            
             if(userData.role === 'admin' || userData.role === 'assistant') {
-                document.getElementById('top-btn-coach').classList.remove('hidden');
+                const btn = document.getElementById('top-btn-coach');
+                if(btn) btn.classList.remove('hidden');
             }
+
             if(userData.role !== 'admin' && userData.role !== 'assistant' && !sessionStorage.getItem('notif_dismissed')) {
                 const routinesSnap = await getDocs(query(collection(db, "routines"), where("assignedTo", "array-contains", user.uid)));
                 if(!routinesSnap.empty) document.getElementById('notif-badge').style.display = 'block';
             }
+
             if(userData.approved){
                 setTimeout(() => { document.getElementById('loading-screen').classList.add('hidden'); }, 1500); 
                 document.getElementById('main-header').classList.remove('hidden');
+                
                 loadRoutines();
                 const savedW = localStorage.getItem('fit_active_workout');
                 if(savedW) {
@@ -225,13 +249,15 @@ window.switchTab = (t) => {
     document.getElementById(t).classList.add('active');
     document.getElementById('main-container').scrollTop = 0;
     document.querySelectorAll('.top-nav-item').forEach(n => n.classList.remove('active'));
+    
     if (t === 'routines-view') document.getElementById('top-btn-routines').classList.add('active');
     if (t === 'profile-view') {
         document.getElementById('top-btn-profile').classList.add('active');
         loadProfile();
     }
     if (t === 'admin-view' || t === 'coach-detail-view') {
-        document.getElementById('top-btn-coach').classList.add('active');
+        const btnCoach = document.getElementById('top-btn-coach');
+        if(btnCoach) btnCoach.classList.add('active');
     }
 };
 
@@ -240,7 +266,9 @@ window.logout = () => signOut(auth).then(()=>location.reload());
 
 window.recoverPass = async () => {
     const email = prompt("Introduce tu email:");
-    if(email) try { await sendPasswordResetEmail(auth, email); alert("📧 Correo enviado."); } catch(e) { alert("Error: " + e.message); }
+    if(email) {
+        try { await sendPasswordResetEmail(auth, email); alert("📧 Correo enviado."); } catch(e) { alert("Error: " + e.message); }
+    }
 };
 window.dismissNotif = () => { document.getElementById('notif-badge').style.display = 'none'; switchTab('routines-view'); sessionStorage.setItem('notif_dismissed', 'true'); };
 
@@ -291,7 +319,6 @@ async function loadRoutines() {
         l.innerHTML = '';
         s.forEach(d=>{
             const r = d.data();
-            // FIX DE VISIBILIDAD: Solo muestro las mías (creadas o asignadas), NO todas aunque sea admin
             const isMine = r.uid === currentUser.uid;
             const isAssignedToMe = r.assignedTo && r.assignedTo.includes(currentUser.uid);
             
@@ -315,6 +342,7 @@ window.openEditor = async (id = null) => {
         const docSnap = await getDoc(doc(db, "routines", id));
         const r = docSnap.data();
         document.getElementById('editor-name').value = r.name;
+        
         currentRoutineSelections = r.exercises.map(ex => ({
             n: ex.n || ex, s: ex.s || false, series: ex.series || 5, reps: ex.reps || "20-16-16-16-16"
         }));
@@ -347,26 +375,37 @@ function renderExercises(l) {
         d.innerHTML = `<img src="${e.img}" onerror="this.src='logo.png'"><span>${e.n}</span>`;
         d.onclick = () => { 
             const index = currentRoutineSelections.findIndex(x => x.n === e.n);
-            if(index > -1) { currentRoutineSelections.splice(index, 1); } 
-            else { currentRoutineSelections.push({ n: e.n, s: false, series: 5, reps: "20-16-16-16-16" }); } 
-            renderExercises(l); renderSelectedSummary(); 
+            if(index > -1) { 
+                currentRoutineSelections.splice(index, 1);
+            } else { 
+                currentRoutineSelections.push({ n: e.n, s: false, series: 5, reps: "20-16-16-16-16" });
+            } 
+            renderExercises(l);
+            renderSelectedSummary(); 
         };
         c.appendChild(d);
     });
 }
 
 window.renderSelectedSummary = () => {
-    const div = document.getElementById('selected-summary'); div.innerHTML = '';
+    const div = document.getElementById('selected-summary'); 
+    div.innerHTML = '';
     window.currentRoutineSelections = currentRoutineSelections;
+
     currentRoutineSelections.forEach((obj, idx) => { 
-        const pill = document.createElement('div'); pill.className = 'summary-item-card'; 
+        const pill = document.createElement('div'); 
+        pill.className = 'summary-item-card'; 
         let linkStyle = obj.s ? "color: white; font-weight:bold; text-shadow: 0 0 5px white;" : "color:rgba(255,255,255,0.2);";
         pill.innerHTML = `
             <span class="summary-item-name">${obj.n}</span>
             <div class="summary-inputs">
-                <input type="number" value="${obj.series || 5}" oninput="window.currentRoutineSelections[${idx}].series = parseInt(this.value) || 0" placeholder="Ser">
+                <input type="number" value="${obj.series || 5}" 
+                    oninput="window.currentRoutineSelections[${idx}].series = parseInt(this.value) || 0" 
+                    placeholder="Ser">
                 <span>x</span>
-                <input type="text" value="${obj.reps || '20-16-16-16-16'}" style="width:110px" oninput="window.currentRoutineSelections[${idx}].reps = this.value" placeholder="Reps">
+                <input type="text" value="${obj.reps || '20-16-16-16-16'}" style="width:110px" 
+                    oninput="window.currentRoutineSelections[${idx}].reps = this.value" 
+                    placeholder="Reps">
                 <span style="font-size:1.2rem; cursor:pointer; ${linkStyle}" onclick="toggleSuperset(${idx})">🔗</span>
                 <b class="btn-remove-ex" onclick="removeSelection('${obj.n}')" style="cursor:pointer; margin-left:10px;">✕</b>
             </div>`; 
@@ -384,20 +423,36 @@ window.toggleSuperset = (idx) => {
 window.removeSelection = (name) => { 
     currentRoutineSelections = currentRoutineSelections.filter(x => x.n !== name); 
     renderSelectedSummary(); 
-    window.filterExercises(document.getElementById('ex-search').value); 
+    const searchVal = document.getElementById('ex-search').value; 
+    window.filterExercises(searchVal); 
 }
 
 window.saveRoutine = async () => {
     const n = document.getElementById('editor-name').value;
     const s = window.currentRoutineSelections; 
-    if(!n || s.length === 0) return alert("❌ Faltan datos");
-    const btn = document.getElementById('btn-save-routine'); btn.innerText = "💾 GUARDANDO...";
+    if(!n || s.length === 0) return alert("❌ Faltan datos (Nombre o Ejercicios)");
+    const btn = document.getElementById('btn-save-routine'); 
+    btn.innerText = "💾 GUARDANDO...";
     try {
-        const data = { uid: currentUser.uid, name: n, exercises: s, createdAt: serverTimestamp(), assignedTo: [] };
-        if(editingRoutineId) { await updateDoc(doc(db, "routines", editingRoutineId), { name: n, exercises: s }); } 
-        else { await addDoc(collection(db, "routines"), data); }
-        alert("✅ Guardado"); switchTab('routines-view');
-    } catch(e) { alert("Error: " + e.message); } finally { btn.innerText = "GUARDAR"; }
+        const data = { 
+            uid: currentUser.uid, 
+            name: n, 
+            exercises: s, 
+            createdAt: serverTimestamp(), 
+            assignedTo: [] 
+        };
+        if(editingRoutineId) {
+            await updateDoc(doc(db, "routines", editingRoutineId), { name: n, exercises: s });
+        } else {
+            await addDoc(collection(db, "routines"), data);
+        }
+        alert("✅ Rutina guardada correctamente");
+        switchTab('routines-view');
+    } catch(e) { 
+        alert("Error al guardar: " + e.message); 
+    } finally { 
+        btn.innerText = "GUARDAR"; 
+    }
 };
 
 window.delRoutine = async (id) => { if(confirm("¿Borrar?")) await deleteDoc(doc(db,"routines",id)); window.loadAdminLibrary(); };
@@ -421,7 +476,8 @@ window.uploadAvatar = (inp) => {
         uploadBytes(storageRef, file).then(async (snapshot) => {
             const url = await getDownloadURL(snapshot.ref);
             await updateDoc(doc(db,"users",currentUser.uid), {photo: url}); 
-            userData.photo = url; window.loadProfile();
+            userData.photo = url; 
+            window.loadProfile();
         }).catch(e => alert("Error subiendo foto: " + e.message));
     } 
 };
@@ -431,10 +487,14 @@ window.loadCompImg = (inp, field) => {
         const file = inp.files[0];
         const r = new FileReader(); 
         r.onload = (e) => { 
-            const img = new Image(); img.src = e.target.result; 
+            const img = new Image(); 
+            img.src = e.target.result; 
             img.onload = async () => { 
-                const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d'); 
-                const scale = 800 / img.width; canvas.width = 800; canvas.height = img.height * scale; 
+                const canvas = document.createElement('canvas'); 
+                const ctx = canvas.getContext('2d'); 
+                const scale = 800 / img.width; 
+                canvas.width = 800; 
+                canvas.height = img.height * scale; 
                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height); 
                 canvas.toBlob(async (blob) => {
                     const prefix = currentPose === 'front' ? 'front' : 'back';
@@ -449,7 +509,8 @@ window.loadCompImg = (inp, field) => {
                         const dateField = field === 'before' ? `dateBefore${fieldPrefix}` : `dateAfter${fieldPrefix}`; 
                         const today = new Date().toLocaleDateString(); 
                         const record = { date: today, url: url };
-                        let update = {}; update[fieldName] = url; update[dateField] = today;
+                        let update = {}; 
+                        update[fieldName] = url; update[dateField] = today;
                         const histField = fieldPrefix === '' ? 'photoHistoryFront' : 'photoHistoryBack';
                         update[histField] = arrayUnion(record);
                         await updateDoc(doc(db, "users", currentUser.uid), update); 
@@ -460,7 +521,8 @@ window.loadCompImg = (inp, field) => {
                     } catch(err) { alert("Error: " + err.message); }
                 }, 'image/jpeg', 0.8);
             }; 
-        }; r.readAsDataURL(file); 
+        }; 
+        r.readAsDataURL(file); 
     } 
 };
 
@@ -468,8 +530,10 @@ window.deletePhoto = async (type) => {
     if(!confirm("¿Borrar?")) return; 
     const prefix = currentPose === 'front' ? '' : '_back'; 
     const f = type === 'before' ? `photoBefore${prefix}` : `photoAfter${prefix}`; 
-    let u={}; u[f]=""; await updateDoc(doc(db,"users",currentUser.uid),u); 
-    userData[f]=""; updatePhotoDisplay(userData); 
+    let u={}; u[f]=""; 
+    await updateDoc(doc(db,"users",currentUser.uid),u); 
+    userData[f]=""; 
+    updatePhotoDisplay(userData); 
 };
 
 window.moveSlider = (v) => { 
@@ -485,7 +549,8 @@ window.switchCoachPose = (pose) => {
 };
 
 function updateCoachPhotoDisplay(pose) {
-    const u = selectedUserObj; if(!u) return;
+    const u = selectedUserObj;
+    if(!u) return;
     const prefix = pose === 'front' ? '' : '_back';
     const histField = prefix === '' ? 'photoHistoryFront' : 'photoHistoryBack';
     const history = u[histField] || [];
@@ -512,9 +577,11 @@ function updateCoachPhotoDisplay(pose) {
     } else {
         history.forEach((h, i) => {
             const label = h.date || `Foto ${i+1}`;
-            selB.add(new Option(label, h.url)); selA.add(new Option(label, h.url));
+            selB.add(new Option(label, h.url));
+            selA.add(new Option(label, h.url));
         });
-        selB.selectedIndex = 0; selA.selectedIndex = history.length - 1;
+        selB.selectedIndex = 0;
+        selA.selectedIndex = history.length - 1;
     }
     window.updateCoachSliderImages();
 }
@@ -524,7 +591,8 @@ window.updateCoachSliderImages = () => {
     const urlA = document.getElementById('c-sel-after').value;
     const imgB = document.getElementById('c-img-before');
     const imgA = document.getElementById('c-img-after');
-    if(imgB) imgB.src = urlB; if(imgA) imgA.src = urlA;
+    if(imgB) imgB.src = urlB;
+    if(imgA) imgA.src = urlA;
 };
 
 window.moveCoachSlider = (v) => {
@@ -739,7 +807,7 @@ window.startWorkout = async (rid) => {
         if(sameRoutine.length > 0) lastWorkoutData = sameRoutine[0].details;
 
         const now = Date.now();
-        activateMediaSession("Entrenamiento Iniciado");
+        playSilentAudio();
         
         activeWorkout = { 
             name: r.name, 
@@ -777,7 +845,10 @@ window.startWorkout = async (rid) => {
         renderWorkout(); 
         switchTab('workout-view'); 
         startTimerMini();
-    } catch(e) { console.error(e); alert("Error iniciando entreno: " + e.message); }
+    } catch(e) { 
+        console.error(e);
+        alert("Error iniciando entreno: " + e.message); 
+    }
 };
 
 window.addSet = (exIdx) => { 
@@ -1076,29 +1147,40 @@ window.tS = async (i, j) => {
         const reps = parseInt(s.r) || 0;
 
         if (weight > 0 && reps > 0) {
+            // 1. Cálculo del 1RM Estimado (Fórmula Brzycki)
             const estimated1RM = Math.round(weight / (1.0278 - (0.0278 * reps)));
+
+            // 2. Obtenemos el récord anterior del perfil del usuario
             if (!userData.rmRecords) userData.rmRecords = {};
             const currentRecord = userData.rmRecords[exerciseName] || 0;
 
+            // 3. ¿Es un NUEVO RÉCORD de Fuerza?
             if (estimated1RM > currentRecord) {
                 userData.rmRecords[exerciseName] = estimated1RM;
                 updateDoc(doc(db, "users", currentUser.uid), { [`rmRecords.${exerciseName}`]: estimated1RM });
+
+                // 4. ¡CELEBRACIÓN! 🎉
                 if(typeof confetti === 'function') {
                     confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 }, colors: ['#00ff88', '#ffffff'] });
+                    setTimeout(() => confetti({ particleCount: 50, angle: 60, spread: 55, origin: { x: 0 } }), 200);
+                    setTimeout(() => confetti({ particleCount: 50, angle: 120, spread: 55, origin: { x: 1 } }), 200);
                 }
                 showToast(`🔥 ¡NUEVO NIVEL DE FUERZA!<br>1RM Est: <b>${estimated1RM}kg</b> en ${exerciseName}`);
             } 
+            // Si no es 1RM, revisamos si es PR de peso absoluto
             else {
                 const currentWeightPR = userData.prs ? (userData.prs[exerciseName] || 0) : 0;
                 if (weight > currentWeightPR) {
                     if(!userData.prs) userData.prs = {};
                     userData.prs[exerciseName] = weight;
+                    // --- CONTADOR DE LOGROS ---
                     const newPrCount = (userData.stats.prCount || 0) + 1;
                     updateDoc(doc(db, "users", currentUser.uid), { 
                         [`prs.${exerciseName}`]: weight,
                         "stats.prCount": newPrCount 
                     });
                     userData.stats.prCount = newPrCount;
+
                     showToast(`💪 Peso Máximo Superado: ${weight}kg`);
                 }
             }
@@ -1120,13 +1202,14 @@ window.requestNotifPermission = () => {
     }
 };
 
-// --- VISUALES DEL CRONÓMETRO SVG (ROJO CORPORATIVO) ---
+// --- VISUALES DEL CRONÓMETRO SVG (ROJO CORPORATIVO) + TIME FIX ---
 function updateTimerVisuals(timeLeft) {
     const display = document.getElementById('timer-display');
     const ring = document.getElementById('timer-progress-ring');
     
     if(display) {
         display.innerText = timeLeft;
+        // Parpadeo final
         display.style.color = timeLeft <= 5 ? "#fff" : "var(--accent-color)";
         display.style.textShadow = timeLeft <= 5 ? "0 0 20px #fff" : "none";
     }
@@ -1140,34 +1223,45 @@ function updateTimerVisuals(timeLeft) {
     }
 }
 
+// --- OPEN REST CON TIEMPO DELTA (FIX PARA QUE NO SE PARE) ---
 function openRest() {
     window.openModal('modal-timer');
-    activateMediaSession("Descanso..."); // HTML5 Audio trigger
+    playSilentAudio(); 
     
-    let left = parseInt(userData.restTime) || 60;
-    totalRestTime = left; 
+    let duration = parseInt(userData.restTime) || 60;
+    totalRestTime = duration; 
     
-    updateTimerVisuals(left);
+    // Marca de tiempo absoluta: AHORA + DURACIÓN
+    restEndTime = Date.now() + (duration * 1000);
+
+    updateTimerVisuals(duration);
+    
+    if ('mediaSession' in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+            title: `DESCANSO: ${duration}s`,
+            artist: 'Recuperando...',
+            album: 'Fit Data Pro',
+            artwork: [{ src: 'logo.png', sizes: '512x512', type: 'image/png' }]
+        });
+        navigator.mediaSession.playbackState = "playing";
+    }
 
     if(timerInt) clearInterval(timerInt);
     
     timerInt = setInterval(() => {
-        left--;
-        updateTimerVisuals(left);
+        // Cálculo DELTA: Tiempo final - Tiempo actual
+        const now = Date.now();
+        const left = Math.ceil((restEndTime - now) / 1000);
         
-        // Actualizar Isla Dinámica cada segundo
-        if ('mediaSession' in navigator) {
-            navigator.mediaSession.metadata.title = `DESCANSO: ${left}s`;
-            if(left % 5 === 0) { 
-                 navigator.mediaSession.metadata = new MediaMetadata({
-                    title: `⏳ DESCANSO: ${left}s`,
-                    artist: 'Mantente enfocado',
-                    artwork: [{ src: 'logo.png', sizes: '512x512', type: 'image/png' }]
-                });
-            }
-        }
-        
-        if (left <= 0) {
+        if (left >= 0) {
+             updateTimerVisuals(left);
+             
+             // Actualizar Isla Dinámica (throttled para no saturar)
+             if (left % 2 === 0 && 'mediaSession' in navigator) {
+                 navigator.mediaSession.metadata.title = `⏳ DESCANSO: ${left}s`;
+             }
+        } 
+        else {
             window.closeTimer();
             if(document.getElementById('cfg-sound') && document.getElementById('cfg-sound').checked) {
                 play5Beeps();
@@ -1175,7 +1269,9 @@ function openRest() {
             if ("vibrate" in navigator) navigator.vibrate([200, 100, 200]);
             
             if ("Notification" in window && Notification.permission === "granted") {
-                 new Notification("¡A LA SERIE!", { body: "Descanso finalizado.", icon: "logo.png" });
+                 try {
+                    new Notification("¡A LA SERIE!", { body: "Descanso finalizado.", icon: "logo.png" });
+                 } catch(e) {}
             }
         }
     }, 1000);
@@ -1197,19 +1293,29 @@ window.closeTimer = () => {
 
 window.addRestTime = (s) => { 
     clearInterval(timerInt);
-    let currentVal = parseInt(document.getElementById('timer-display').innerText) || 0;
-    let newTime = currentVal + s;
-    if (s > 0) totalRestTime += s; 
     
-    updateTimerVisuals(newTime);
-    activateMediaSession(`DESCANSO: ${newTime}s`);
+    // Sumamos tiempo a la marca final
+    restEndTime += (s * 1000);
     
-    let left = newTime;
+    // Recalculamos lo que queda
+    const now = Date.now();
+    const left = Math.ceil((restEndTime - now) / 1000);
+    
+    // Ajustar visuales del total para que la barra no salte feo
+    if(s > 0) totalRestTime += s; 
+    
+    updateTimerVisuals(left);
+    
+    if ('mediaSession' in navigator) navigator.mediaSession.metadata.title = `DESCANSO: ${left}s`;
+    
     timerInt = setInterval(() => {
-        left--;
-        updateTimerVisuals(left);
-        if ('mediaSession' in navigator) navigator.mediaSession.metadata.title = `DESCANSO: ${left}s`;
-        if(left <= 0) {
+        const currentNow = Date.now();
+        const currentLeft = Math.ceil((restEndTime - currentNow) / 1000);
+        
+        if(currentLeft >= 0) {
+            updateTimerVisuals(currentLeft);
+            if(currentLeft % 2 === 0 && 'mediaSession' in navigator) navigator.mediaSession.metadata.title = `⏳ DESCANSO: ${currentLeft}s`;
+        } else {
             window.closeTimer();
             if(document.getElementById('cfg-sound').checked) play5Beeps();
             if("vibrate" in navigator) navigator.vibrate([500]);
@@ -1534,60 +1640,30 @@ window.createPlan = async () => {
 window.deletePlan = async (id) => { if(confirm("¿Borrar plan?")) { await deleteDoc(doc(db, "plans", id)); window.loadAdminPlans(); } };
 
 window.openAssignPlanModal = async (planId) => {
-    assignMode = 'plan';
-    selectedPlanForMassAssign = planId; 
-    const list = document.getElementById('assign-users-list');
+    selectedPlanForMassAssign = planId; const list = document.getElementById('assign-users-list');
     window.openModal('modal-assign-plan');
     try {
-        const snap = await getDoc(doc(db, "plans", planId)); 
-        if (snap.exists()) document.getElementById('assign-plan-title').innerText = `Asignar PLAN "${snap.data().name}" a:`;
-        
-        // Carga de usuarios (reutilizable)
-        loadUsersForModal(list);
+        const snap = await getDoc(doc(db, "plans", planId)); if (snap.exists()) document.getElementById('assign-plan-title').innerText = `Asignar "${snap.data().name}" a:`;
+        let q = userData.role === 'assistant' ? query(collection(db, "users"), where("assignedCoach", "==", currentUser.uid)) : collection(db, "users");
+        const uSnap = await getDocs(q); list.innerHTML = '';
+        uSnap.forEach(d => {
+            const u = d.data(); if (u.role === 'athlete') {
+                const div = document.createElement('div'); div.className = "selector-item";
+                div.innerHTML = `<input type="checkbox" class="user-mass-check selector-checkbox" value="${d.id}" id="u-${d.id}"><label for="u-${d.id}" class="selector-label">${u.name}</label>`;
+                list.appendChild(div);
+            }
+        });
     } catch(e) { console.error(e); }
 };
 
-window.openAssignRoutineFromLib = (routineId, routineName) => {
-    assignMode = 'single_routine';
-    selectedRoutineForMassAssign = routineId;
-    const list = document.getElementById('assign-users-list');
-    window.openModal('modal-assign-plan');
-    document.getElementById('assign-plan-title').innerText = `Asignar RUTINA "${routineName}" a:`;
-    loadUsersForModal(list);
-};
-
-// Helper para cargar usuarios en el modal de asignación
-async function loadUsersForModal(listElement) {
-    listElement.innerHTML = 'Cargando...';
-    let q = userData.role === 'assistant' ? query(collection(db, "users"), where("assignedCoach", "==", currentUser.uid)) : collection(db, "users");
-    const uSnap = await getDocs(q); listElement.innerHTML = '';
-    uSnap.forEach(d => {
-        const u = d.data(); if (u.role === 'athlete') {
-            const div = document.createElement('div'); div.className = "selector-item";
-            div.innerHTML = `<input type="checkbox" class="user-mass-check selector-checkbox" value="${d.id}" id="u-${d.id}"><label for="u-${d.id}" class="selector-label">${u.name}</label>`;
-            listElement.appendChild(div);
-        }
-    });
-}
-
 window.distributePlan = async () => {
-    const checks = document.querySelectorAll('.user-mass-check:checked');
+    if(!selectedPlanForMassAssign) return; const checks = document.querySelectorAll('.user-mass-check:checked');
     if(checks.length === 0) return alert("Selecciona al menos un atleta.");
-    const userIds = Array.from(checks).map(c => c.value); 
-    const btn = document.querySelector('#modal-assign-plan .btn'); 
-    btn.innerText = "ENVIANDO...";
-
+    const userIds = Array.from(checks).map(c => c.value); const btn = document.querySelector('#modal-assign-plan .btn'); btn.innerText = "ENVIANDO...";
     try {
-        if(assignMode === 'plan') {
-             const planSnap = await getDoc(doc(db, "plans", selectedPlanForMassAssign));
-             const promises = planSnap.data().routines.map(rid => updateDoc(doc(db, "routines", rid), { assignedTo: arrayUnion(...userIds) }));
-             await Promise.all(promises); 
-             alert(`✅ Plan asignado.`);
-        } else {
-             await updateDoc(doc(db, "routines", selectedRoutineForMassAssign), { assignedTo: arrayUnion(...userIds) });
-             alert(`✅ Rutina asignada.`);
-        }
-        window.closeModal('modal-assign-plan');
+        const planSnap = await getDoc(doc(db, "plans", selectedPlanForMassAssign));
+        const promises = planSnap.data().routines.map(rid => updateDoc(doc(db, "routines", rid), { assignedTo: arrayUnion(...userIds) }));
+        await Promise.all(promises); alert(`✅ Plan asignado.`); window.closeModal('modal-assign-plan');
     } catch(e) { alert("Error: " + e.message); } finally { btn.innerText = "✅ ENVIAR A SELECCIONADOS"; }
 };
 
@@ -1598,46 +1674,46 @@ window.loadAdminUsers = async () => {
         const s = await getDocs(q); l.innerHTML = '';
         s.forEach(d => {
             const u = d.data(); 
-            const avatarHtml = u.photo ? `<img src="${u.photo}" class="mini-avatar">` : `<div class="mini-avatar-placeholder">${u.name.charAt(0).toUpperCase()}</div>`;
+            const avatarHtml = u.photo 
+                ? `<img src="${u.photo}" class="mini-avatar">` 
+                : `<div class="mini-avatar-placeholder">${u.name.charAt(0).toUpperCase()}</div>`;
+            
             let rowClass = "admin-user-row";
             if(d.id === currentUser.uid) rowClass += " is-me"; 
             if(u.role === 'assistant') rowClass += " is-coach";
-            const div = document.createElement('div'); div.className = rowClass;
-            div.innerHTML=`${avatarHtml}<div style="overflow:hidden;"><div style="font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:white;">${u.name} ${u.role === 'assistant' ? '🛡️' : ''}</div><div style="font-size:0.75rem; color:#888; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${u.email}</div></div><button class="btn-outline btn-small" style="margin:0; border-color:#444; color:#ccc;">⚙️</button>`;
-            div.onclick=()=>openCoachView(d.id,u); l.appendChild(div);
+
+            const div = document.createElement('div'); 
+            div.className = rowClass;
+            div.innerHTML=`
+                ${avatarHtml}
+                <div style="overflow:hidden;">
+                    <div style="font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:white;">
+                        ${u.name} ${u.role === 'assistant' ? '🛡️' : ''}
+                    </div>
+                    <div style="font-size:0.75rem; color:#888; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                        ${u.email}
+                    </div>
+                </div>
+                <button class="btn-outline btn-small" style="margin:0; border-color:#444; color:#ccc;">⚙️</button>
+            `;
+            div.onclick = () => openCoachView(d.id, u); 
+            l.appendChild(div);
         });
     } catch (e) { l.innerHTML = 'Error de permisos.'; }
 };
 
 window.loadAdminLibrary = async () => {
-    const l = document.getElementById('admin-lib-list'); 
-    l.innerHTML = `
-        <div style="margin-bottom:15px;">
-            <button class="btn" style="width:100%; font-size:0.9rem;" onclick="window.goToCreateRoutine()">+ CREAR NUEVA RUTINA</button>
-        </div>
-        <div id="lib-content">↻ Cargando...</div>
-    `;
-    const content = document.getElementById('lib-content');
-    
+    const l = document.getElementById('admin-lib-list'); l.innerHTML = '↻ Cargando...';
     try {
         const uSnap = await getDocs(collection(db, "users")); const userMap = {}; uSnap.forEach(u => userMap[u.id] = u.data().name);
-        const s = await getDocs(collection(db, "routines")); 
-        content.innerHTML = '';
-        
+        const s = await getDocs(collection(db, "routines")); l.innerHTML = '';
         s.forEach(d => {
             const r = d.data(); const div = document.createElement('div'); div.className = "assigned-routine-item";
             let author = r.uid === currentUser.uid ? "Mía (Admin)" : (userMap[r.uid] || "Admin");
-            
-            div.innerHTML = `
-                <div style="flex:1;"><b>${r.name}</b><br><span style="font-size:0.7rem; color:#666;">Creado por: ${author}</span></div>
-                <div style="display:flex; gap:5px;">
-                    <button class="btn-small btn-outline" style="border-color:#555;" onclick="window.openAssignRoutineFromLib('${d.id}', '${r.name}')">📤</button>
-                    <button class="btn-small btn-outline" style="border-color:#555;" onclick="window.openEditor('${d.id}')">✏️</button>
-                    <button class="btn-small btn-danger" onclick="delRoutine('${d.id}')">🗑️</button>
-                </div>`;
-            content.appendChild(div);
+            div.innerHTML = `<div style="flex:1;"><b>${r.name}</b><br><span style="font-size:0.7rem; color:#666;">Creado por: ${author}</span></div><div style="display:flex; gap:10px;"><button class="btn-small btn-outline" onclick="viewRoutineContent('${r.name}','${encodeURIComponent(JSON.stringify(r.exercises))}')">👁️</button><button class="btn-small btn-danger" onclick="delRoutine('${d.id}')">🗑️</button></div>`;
+            l.appendChild(div);
         });
-    } catch (e) { content.innerHTML = 'Error.'; }
+    } catch (e) { l.innerHTML = 'Error.'; }
 };
 
 window.viewRoutineContent = (name, dataStr) => {
