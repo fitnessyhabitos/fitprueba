@@ -4,7 +4,7 @@ import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, q
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 import { EXERCISES } from './data.js';
 
-console.log("⚡ FIT DATA: App Iniciada (iOS Fix: URL Remote + Delta Time)...");
+console.log("⚡ FIT DATA: App Iniciada (Pro Audio - Native Timer Sync)...");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDW40Lg6QvBc3zaaA58konqsH3QtDrRmyM",
@@ -38,7 +38,7 @@ let timerInt = null;
 let durationInt = null;
 let wakeLock = null;
 let totalRestTime = 60; 
-let restEndTime = 0; // CRUCIAL: Marca de tiempo real para evitar lentitud
+let restEndTime = 0; 
 let noteTargetIndex = null;
 
 // Filtros Ranking
@@ -95,8 +95,8 @@ window.toggleElement = (id) => {
     if(el) el.classList.toggle('hidden');
 };
 
-// --- AUDIO ENGINE (FIXED: URL REMOTA + HANDLERS) ---
-// Usamos URL remota porque iOS la trata como "Música Real" y muestra la Isla Dinámica.
+// --- AUDIO ENGINE (NATIVE SYNC) ---
+// MP3 más largo (10s) para evitar bucles muy cortos que iOS pausa
 const SILENT_MP3_URL = "https://raw.githubusercontent.com/anars/blank-audio/master/10-seconds-of-silence.mp3";
 
 let htmlAudioElement = new Audio(SILENT_MP3_URL);
@@ -105,38 +105,41 @@ htmlAudioElement.preload = 'auto';
 htmlAudioElement.volume = 1.0; 
 
 function initAudioEngine() {
-    // 1. Web Audio (Beeps)
+    // 1. Inicializar Web Audio (Beeps)
     if (!audioCtx) {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         audioCtx = new AudioContext();
     }
     if (audioCtx.state === 'suspended') audioCtx.resume();
 
-    // 2. HTML5 Audio (Isla Dinámica)
+    // 2. Inicializar HTML5 Audio (Isla Dinámica)
     htmlAudioElement.play().then(() => {
         if ('mediaSession' in navigator) {
-            // Handlers obligatorios para iOS
+            // Handlers vitales para que iOS muestre la interfaz
             navigator.mediaSession.setActionHandler('play', () => { 
                 htmlAudioElement.play();
                 navigator.mediaSession.playbackState = "playing"; 
             });
             navigator.mediaSession.setActionHandler('pause', () => { 
-                navigator.mediaSession.playbackState = "playing"; // Forzamos playing
+                navigator.mediaSession.playbackState = "playing"; // Evitamos pausa
             });
             navigator.mediaSession.setActionHandler('previoustrack', () => window.addRestTime(-10));
             navigator.mediaSession.setActionHandler('nexttrack', () => window.addRestTime(10));
-            
+            navigator.mediaSession.setActionHandler('seekto', (details) => {
+                // Permitir seek si el usuario desliza la barra (opcional)
+            });
+
+            // Estado inicial neutro
             navigator.mediaSession.metadata = new MediaMetadata({
-                title: 'Entrenamiento Activo',
-                artist: 'Fit Data Pro',
-                album: 'Toque para volver',
+                title: 'Fit Data Pro',
+                artist: 'Listo para entrenar',
                 artwork: [{ src: 'logo.png', sizes: '512x512', type: 'image/png' }]
             });
-            navigator.mediaSession.playbackState = "playing";
         }
-    }).catch(e => { /* Esperando interacción */ });
+    }).catch(e => { console.log("Esperando interacción de usuario..."); });
 }
 
+// Listeners globales agresivos
 document.body.addEventListener('touchstart', initAudioEngine, {once:true});
 document.body.addEventListener('click', initAudioEngine, {once:true});
 
@@ -1165,17 +1168,20 @@ function updateTimerVisuals(timeLeft) {
     }
 }
 
-// --- OPEN REST CON TIEMPO DELTA (FIX PARA QUE NO SE PARE) ---
+// --- OPEN REST CON TIEMPO DELTA Y MEDIA SESSION SYNC ---
 function openRest() {
     window.openModal('modal-timer');
     
-    // Llamar al audio
+    // 1. Activar Audio (VITAL PARA IOS)
     if(htmlAudioElement) {
+        // En iOS, el audio debe estar "playing" para que la barra de progreso se mueva sola.
         htmlAudioElement.play()
-            .then(() => { if('mediaSession' in navigator) navigator.mediaSession.playbackState = "playing"; })
+            .then(() => { 
+                if('mediaSession' in navigator) navigator.mediaSession.playbackState = "playing"; 
+            })
             .catch(e => console.log("Audio play blocked", e));
     } else {
-        initAudioEngine(); // Intentar recuperar si no existe
+        initAudioEngine();
     }
     
     let duration = parseInt(userData.restTime) || 60;
@@ -1186,18 +1192,27 @@ function openRest() {
 
     updateTimerVisuals(duration);
     
-    // Metadatos iniciales
+    // 2. CONFIGURAR BARRA DE PROGRESO NATIVA (EL TRUCO PARA QUE NO SE CONGELE)
     if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({
-            title: `DESCANSO: ${duration}s`,
-            artist: 'Recuperando...',
-            album: 'Fit Data Pro',
+            title: `Descanso...`, // Título estático, el tiempo lo da la barra
+            artist: 'Fit Data Pro',
+            album: 'Recuperando',
             artwork: [{ src: 'logo.png', sizes: '512x512', type: 'image/png' }]
+        });
+        
+        // ESTO ES LO QUE HACE QUE LA BARRA SE MUEVA SOLA
+        navigator.mediaSession.setPositionState({
+            duration: duration,
+            playbackRate: 1,
+            position: 0
         });
     }
 
     if(timerInt) clearInterval(timerInt);
     
+    // 3. INTERVALO DE SEGURIDAD (JS)
+    // Aunque la barra nativa se mueve sola, usamos JS para detectar el fin y actualizar la UI visual si la pantalla está encendida.
     timerInt = setInterval(() => {
         // Cálculo DELTA: Tiempo final - Tiempo actual
         const now = Date.now();
@@ -1205,11 +1220,6 @@ function openRest() {
         
         if (left >= 0) {
              updateTimerVisuals(left);
-             
-             // Actualizar Isla Dinámica (throttled)
-             if (left % 2 === 0 && 'mediaSession' in navigator) {
-                 navigator.mediaSession.metadata.title = `⏳ DESCANSO: ${left}s`;
-             }
         } 
         else {
             window.closeTimer();
@@ -1238,6 +1248,12 @@ window.closeTimer = () => {
             album: 'Dale duro',
             artwork: [{ src: 'logo.png', sizes: '512x512', type: 'image/png' }]
         });
+        // Reseteamos posición para que no parezca que sigue contando
+        navigator.mediaSession.setPositionState({
+            duration: 100, // Dummy
+            playbackRate: 0, // Pausado visualmente
+            position: 0
+        });
     }
 };
 
@@ -1254,7 +1270,17 @@ window.addRestTime = (s) => {
     if(s > 0) totalRestTime += s; 
     
     updateTimerVisuals(left);
-    if ('mediaSession' in navigator) navigator.mediaSession.metadata.title = `DESCANSO: ${left}s`;
+    
+    // Actualizamos la barra nativa
+    if ('mediaSession' in navigator) {
+        // Calculamos nueva posición relativa
+        const currentPos = totalRestTime - left;
+        navigator.mediaSession.setPositionState({
+            duration: totalRestTime,
+            playbackRate: 1,
+            position: Math.max(0, currentPos)
+        });
+    }
     
     timerInt = setInterval(() => {
         const currentNow = Date.now();
@@ -1262,7 +1288,6 @@ window.addRestTime = (s) => {
         
         if(currentLeft >= 0) {
             updateTimerVisuals(currentLeft);
-            if(currentLeft % 2 === 0 && 'mediaSession' in navigator) navigator.mediaSession.metadata.title = `⏳ DESCANSO: ${currentLeft}s`;
         } else {
             window.closeTimer();
             if(document.getElementById('cfg-sound').checked) play5Beeps();
