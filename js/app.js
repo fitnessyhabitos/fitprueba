@@ -4,7 +4,7 @@ import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, q
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 import { EXERCISES } from './data.js';
 
-console.log("⚡ FIT DATA: App Iniciada (iOS Native Audio FIXED Base64)...");
+console.log("⚡ FIT DATA: App Iniciada (iOS Fix: URL Remote + Delta Time)...");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDW40Lg6QvBc3zaaA58konqsH3QtDrRmyM",
@@ -38,7 +38,7 @@ let timerInt = null;
 let durationInt = null;
 let wakeLock = null;
 let totalRestTime = 60; 
-let restEndTime = 0; // Fix para tiempo delta
+let restEndTime = 0; // CRUCIAL: Marca de tiempo real para evitar lentitud
 let noteTargetIndex = null;
 
 // Filtros Ranking
@@ -68,10 +68,8 @@ let currentRoutineSelections = [];
 window.currentRoutineSelections = currentRoutineSelections; 
 let swapTargetIndex = null; 
 let selectedPlanForMassAssign = null; 
-let assignMode = 'plan'; 
-let selectedRoutineForMassAssign = null; 
 
-// --- SCROLL LOCK IOS ---
+// --- GESTIÓN DE SCROLL LOCK (SOPORTE IOS) ---
 let scrollPos = 0;
 window.openModal = (id) => {
     scrollPos = window.pageYOffset;
@@ -97,53 +95,53 @@ window.toggleElement = (id) => {
     if(el) el.classList.toggle('hidden');
 };
 
-// --- AUDIO ENGINE (BASE64 + HANDLERS) ---
-// Este string es un MP3 de silencio válido.
-const SILENT_MP3_B64 = "data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU2LjQwLjEwMQAAAAAAAAAAAAAA//OEAAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAAEAAABIADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV6urq6urq6urq6urq6urq6urq6urq6urq6v////////////////////////////////8AAAAATGF2YzU2LjQwLjEwMQAAAAAAAAAAAAAA//OEAAABAAAAAgIAESAAAAABiAMAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//OEABAAAAABBAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+// --- AUDIO ENGINE (FIXED: URL REMOTA + HANDLERS) ---
+// Usamos URL remota porque iOS la trata como "Música Real" y muestra la Isla Dinámica.
+const SILENT_MP3_URL = "https://raw.githubusercontent.com/anars/blank-audio/master/10-seconds-of-silence.mp3";
 
-let htmlAudioElement = new Audio(SILENT_MP3_B64);
+let htmlAudioElement = new Audio(SILENT_MP3_URL);
 htmlAudioElement.loop = true;
 htmlAudioElement.preload = 'auto';
 htmlAudioElement.volume = 1.0; 
 
 function initAudioEngine() {
-    // 1. Inicializar Web Audio (Beeps)
+    // 1. Web Audio (Beeps)
     if (!audioCtx) {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         audioCtx = new AudioContext();
     }
     if (audioCtx.state === 'suspended') audioCtx.resume();
 
-    // 2. Inicializar HTML5 Audio (Isla Dinámica)
-    // Reproducimos y registramos handlers INMEDIATAMENTE
+    // 2. HTML5 Audio (Isla Dinámica)
     htmlAudioElement.play().then(() => {
         if ('mediaSession' in navigator) {
-            // iOS OCULTA el reproductor si no hay handlers definidos.
+            // Handlers obligatorios para iOS
             navigator.mediaSession.setActionHandler('play', () => { 
                 htmlAudioElement.play();
                 navigator.mediaSession.playbackState = "playing"; 
             });
             navigator.mediaSession.setActionHandler('pause', () => { 
-                // Hack: Si el usuario pausa, lo volvemos a poner en playing para que no se quite el timer
-                navigator.mediaSession.playbackState = "playing"; 
+                navigator.mediaSession.playbackState = "playing"; // Forzamos playing
             });
             navigator.mediaSession.setActionHandler('previoustrack', () => window.addRestTime(-10));
             navigator.mediaSession.setActionHandler('nexttrack', () => window.addRestTime(10));
             
-            // Establecer estado inicial
+            navigator.mediaSession.metadata = new MediaMetadata({
+                title: 'Entrenamiento Activo',
+                artist: 'Fit Data Pro',
+                album: 'Toque para volver',
+                artwork: [{ src: 'logo.png', sizes: '512x512', type: 'image/png' }]
+            });
             navigator.mediaSession.playbackState = "playing";
         }
-    }).catch(e => {
-        console.log("Audio unlock fallido (esperando siguiente click)", e);
-    });
+    }).catch(e => { /* Esperando interacción */ });
 }
 
-// Listeners globales para el primer toque
 document.body.addEventListener('touchstart', initAudioEngine, {once:true});
 document.body.addEventListener('click', initAudioEngine, {once:true});
 
 function play5Beeps() {
-    if(!audioCtx) { initAudioEngine(); return; } // Intento de recuperación
+    if(!audioCtx) { initAudioEngine(); return; }
     if(audioCtx.state === 'suspended') audioCtx.resume();
 
     const now = audioCtx.currentTime;
@@ -735,10 +733,8 @@ window.startWorkout = async (rid) => {
         const now = Date.now();
         
         // --- AUDIO TRIGGER (iOS Safe) ---
-        // Forzamos la reproducción del audio HTML5 al iniciar el entreno para que esté "caliente"
         if(htmlAudioElement) {
              htmlAudioElement.play().then(() => {
-                 // Inmediatamente pausamos para no tener ruido, pero la sesión ya está activa
                  htmlAudioElement.pause();
              }).catch(e => {});
         }
