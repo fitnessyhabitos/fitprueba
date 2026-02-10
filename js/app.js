@@ -4,7 +4,7 @@ import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, q
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 import { EXERCISES } from './data.js';
 
-console.log("⚡ FIT DATA: App Iniciada (Full Pro Mode - iOS Native Audio + Social)...");
+console.log("⚡ FIT DATA: App Iniciada (Full Pro Mode - Advanced Ranking)...");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDW40Lg6QvBc3zaaA58konqsH3QtDrRmyM",
@@ -39,6 +39,11 @@ let durationInt = null;
 let wakeLock = null;
 let totalRestTime = 60; // Para animación SVG
 let noteTargetIndex = null; // Para guardar notas de ejercicio
+
+// Variables de Filtro Ranking
+let rankFilterTime = 'all';    // 'all', 'month', 'year'
+let rankFilterGender = 'all';  // 'all', 'male', 'female'
+let rankFilterCat = 'kg';      // 'kg', 'workouts', 'prs', 'reps', 'sets'
 
 let chartInstance = null; 
 let progressChart = null; 
@@ -93,24 +98,17 @@ window.toggleElement = (id) => {
 };
 
 // --- AUDIO ENGINE (HYBRID: HTML5 AUDIO + WEB AUDIO API) ---
-// Este sistema asegura la presencia en la Isla Dinámica
-
-// MP3 Silencioso en Base64 (0.5s)
 const SILENT_MP3 = "data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjIwLjEwMAAAAAAAAAAAAAAA//oeEsAAAAAAAASwgAAAAEAAGiAAAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//oeEsAA1gAAASwgAAAAEAAGiAAAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//oeEsAA1gAAASwgAAAAEAAGiAAAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
 
 let htmlAudioElement = null;
 
 function playSilentAudio() {
-    // 1. Crear el elemento de audio físico si no existe
     if (!htmlAudioElement) {
         htmlAudioElement = new Audio(SILENT_MP3);
         htmlAudioElement.loop = true;
-        htmlAudioElement.volume = 0.05; // Mínimo volumen para que iOS lo detecte como "activo"
+        htmlAudioElement.volume = 0.05; 
     }
-
-    // 2. Reproducir para activar controles multimedia del sistema
     htmlAudioElement.play().then(() => {
-        // Forzamos metadatos inmediatamente
         if ('mediaSession' in navigator) {
             navigator.mediaSession.metadata = new MediaMetadata({
                 title: 'Entrenamiento Activo',
@@ -120,9 +118,8 @@ function playSilentAudio() {
             });
             navigator.mediaSession.playbackState = "playing";
         }
-    }).catch(e => console.log("Audio autoplay bloqueado (esperando toque usuario)"));
+    }).catch(e => console.log("Audio autoplay bloqueado"));
 
-    // 3. Inicializar contexto WebAudio (para los beeps precisos)
     if (!audioCtx) {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         audioCtx = new AudioContext();
@@ -133,9 +130,7 @@ function playSilentAudio() {
 }
 
 function unlockAudio() {
-    // Disparamos ambos motores
     playSilentAudio();
-    
     if(!audioCtx) {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         audioCtx = new AudioContext();
@@ -145,11 +140,9 @@ function unlockAudio() {
     }
 }
 
-// Listeners de interacción inicial
 document.addEventListener('touchstart', unlockAudio, {once:true});
 document.addEventListener('click', unlockAudio, {once:true});
 
-// Generador de Beeps (Usa Web Audio API para no cortar la música de fondo del usuario)
 function play5Beeps() {
     if (!audioCtx) {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -161,19 +154,14 @@ function play5Beeps() {
     for(let i=0; i<5; i++) {
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
-        
         osc.type = 'square'; 
         osc.frequency.setValueAtTime(880, now + (i * 0.6)); 
-        
         osc.connect(gain); 
         gain.connect(audioCtx.destination);
-        
         const start = now + (i * 0.6); 
         const end = start + 0.15;
-        
         osc.start(start); 
         osc.stop(end);
-        
         gain.gain.setValueAtTime(0, start);
         gain.gain.linearRampToValueAtTime(0.5, start + 0.02);
         gain.gain.exponentialRampToValueAtTime(0.01, end);
@@ -908,24 +896,83 @@ window.toggleRankingOptIn = async (val) => {
     } catch(e) { alert("Error actualizando perfil"); }
 };
 
+window.changeRankFilter = (type, val) => {
+    if(type === 'time') {
+        rankFilterTime = val;
+        document.querySelectorAll('#ranking-view .pill').forEach(el => el.classList.remove('active')); // Reset visual genérico
+        document.getElementById(`time-${val}`).classList.add('active');
+        document.getElementById(`gender-${rankFilterGender}`).classList.add('active'); // Restaurar otros
+    }
+    if(type === 'gender') {
+        rankFilterGender = val;
+        document.getElementById('gender-all').classList.remove('active');
+        document.getElementById('gender-male').classList.remove('active');
+        document.getElementById('gender-female').classList.remove('active');
+        document.getElementById(`gender-${val}`).classList.add('active');
+    }
+    if(type === 'cat') {
+        rankFilterCat = val;
+        document.querySelectorAll('.pill-cat').forEach(el => el.classList.remove('active'));
+        document.getElementById(`cat-${val}`).classList.add('active');
+    }
+    window.loadRankingView();
+};
+
 window.loadRankingView = async () => {
     switchTab('ranking-view');
     const list = document.getElementById('ranking-list');
-    list.innerHTML = '<div style="text-align:center; margin-top:50px;">Cargando titanes...</div>';
-    
+    list.innerHTML = '<div style="text-align:center; margin-top:50px; color:#666;">⏳ Calculando posiciones...</div>';
+
     try {
-        const q = query(
+        let orderByField = "";
+        let collectionField = ""; // Sufijo del campo (kg, workouts, reps)
+
+        // Definir métrica base
+        if (rankFilterCat === 'kg') collectionField = "kg"; 
+        else if (rankFilterCat === 'workouts') collectionField = "workouts";
+        else if (rankFilterCat === 'reps') collectionField = "reps";
+        else if (rankFilterCat === 'sets') collectionField = "sets";
+        else if (rankFilterCat === 'prs') collectionField = "prCount";
+
+        // Definir prefijo de tiempo
+        if (rankFilterTime === 'all') {
+            if (rankFilterCat === 'kg') orderByField = "stats.totalKg";
+            else if (rankFilterCat === 'workouts') orderByField = "stats.workouts";
+            else if (rankFilterCat === 'reps') orderByField = "stats.totalReps";
+            else if (rankFilterCat === 'sets') orderByField = "stats.totalSets";
+            else if (rankFilterCat === 'prs') orderByField = "stats.prCount";
+        } else {
+            const now = new Date();
+            const timeKey = rankFilterTime === 'month' ? `month_${now.getFullYear()}_${now.getMonth()}` : `year_${now.getFullYear()}`;
+            if (rankFilterCat === 'prs') {
+                list.innerHTML = "<div class='tip-box'>🏆 Los Récords solo se contabilizan en el Ranking Histórico (Siempre).</div>";
+                return;
+            }
+            orderByField = `stats_${timeKey}.${collectionField}`;
+        }
+
+        let q = query(
             collection(db, "users"), 
             where("rankingOptIn", "==", true),
-            orderBy("stats.totalKg", "desc"),
-            limit(20)
+            orderBy(orderByField, "desc"),
+            limit(50)
         );
+
+        if (rankFilterGender !== 'all') {
+            q = query(
+                collection(db, "users"), 
+                where("rankingOptIn", "==", true),
+                where("gender", "==", rankFilterGender),
+                orderBy(orderByField, "desc"),
+                limit(50)
+            );
+        }
         
         const snap = await getDocs(q);
         list.innerHTML = "";
         
         if(snap.empty) {
-            list.innerHTML = "<div class='tip-box'>Nadie se ha unido al ranking aún. ¡Sé el primero!</div>";
+            list.innerHTML = "<div class='tip-box'>No hay datos para este periodo/filtro todavía. ¡Entrena para inaugurarlo!</div>";
             return;
         }
 
@@ -933,19 +980,31 @@ window.loadRankingView = async () => {
         snap.forEach(d => {
             const u = d.data();
             const isMe = d.id === currentUser.uid;
-            const tonnage = (u.stats?.totalKg / 1000).toFixed(1) + 't';
             
+            // Acceso seguro a campos anidados
+            let rawValue = 0;
+            if (rankFilterTime === 'all') {
+                const fieldName = orderByField.split('.')[1];
+                rawValue = u.stats ? u.stats[fieldName] : 0;
+            } else {
+                const rootKey = orderByField.split('.')[0]; 
+                const subKey = orderByField.split('.')[1];
+                rawValue = (u[rootKey] && u[rootKey][subKey]) ? u[rootKey][subKey] : 0;
+            }
+
+            let displayValue = rawValue;
+            if(rankFilterCat === 'kg') displayValue = (rawValue / 1000).toFixed(1) + 't';
+            else if(rankFilterCat === 'prs') displayValue = rawValue + ' 🏆';
+            else displayValue = rawValue.toLocaleString();
+
             let posClass = "";
             if(rank === 1) posClass = "ranking-1";
             if(rank === 2) posClass = "ranking-2";
             if(rank === 3) posClass = "ranking-3";
-
-            let trophies = "";
-            const k = u.stats?.totalKg || 0;
-            if(k > 10000) trophies += "🥉";
-            if(k > 100000) trophies += "🥈";
-            if(k > 500000) trophies += "🥇";
-            if(k > 1000000) trophies += "💎";
+            
+            const avatarHtml = u.photo 
+                ? `<img src="${u.photo}" class="mini-avatar" style="width:35px;height:35px;">` 
+                : `<div class="mini-avatar-placeholder" style="width:35px;height:35px;font-size:0.8rem;">${u.name.charAt(0)}</div>`;
 
             const div = document.createElement('div');
             div.className = "ranking-row";
@@ -953,21 +1012,29 @@ window.loadRankingView = async () => {
             
             div.innerHTML = `
                 <div class="ranking-pos ${posClass}">#${rank}</div>
-                <div style="flex:1; margin-left:10px;">
-                    <div style="font-weight:bold; color:${isMe ? 'var(--accent-color)' : 'white'}">${u.name} ${trophies}</div>
-                    <div style="font-size:0.75rem; color:#666;">${u.stats?.workouts || 0} entrenos</div>
+                <div style="margin-right:10px;">${avatarHtml}</div>
+                <div style="flex:1;">
+                    <div style="font-weight:bold; color:${isMe ? 'var(--accent-color)' : 'white'}">${u.name}</div>
+                    <div style="font-size:0.65rem; color:#666;">${u.stats?.workouts || 0} entrenos totales</div>
                 </div>
-                <div style="font-family:monospace; font-weight:bold; font-size:1.1rem;">${tonnage}</div>
+                <div class="rank-value-highlight">${displayValue}</div>
             `;
             list.appendChild(div);
             rank++;
         });
 
     } catch(e) {
+        console.error("Rank Error:", e);
         if(e.message.includes("index")) {
-            list.innerHTML = `<div class="tip-box" onclick="window.open('${e.message.match(/https:\/\/\S+/)[0]}', '_blank')">⚠️ ADMIN: Falta Índice en Firebase.<br>Click para crear.</div>`;
+            const url = e.message.match(/https:\/\/\S+/);
+            const link = url ? url[0] : "#";
+            list.innerHTML = `<div class="tip-box" style="cursor:pointer; border-color:red; color:#f88;" onclick="window.open('${link}', '_blank')">
+                ⚠️ SISTEMA: Falta Índice de Base de Datos.<br>
+                <b>Haz click AQUÍ para crearlo automáticamente</b><br>
+                (Es necesario para cada combinación de filtros nueva)
+            </div>`;
         } else {
-            list.innerHTML = "Error cargando ranking.";
+            list.innerHTML = `<div style="text-align:center; color:#666;">Error cargando datos.<br><small>${e.message}</small></div>`;
         }
     }
 };
@@ -1108,7 +1175,14 @@ window.tS = async (i, j) => {
                 if (weight > currentWeightPR) {
                     if(!userData.prs) userData.prs = {};
                     userData.prs[exerciseName] = weight;
-                    updateDoc(doc(db, "users", currentUser.uid), { [`prs.${exerciseName}`]: weight });
+                    // --- NUEVO: CONTADOR DE LOGROS ---
+                    const newPrCount = (userData.stats.prCount || 0) + 1;
+                    updateDoc(doc(db, "users", currentUser.uid), { 
+                        [`prs.${exerciseName}`]: weight,
+                        "stats.prCount": newPrCount 
+                    });
+                    userData.stats.prCount = newPrCount;
+
                     showToast(`💪 Peso Máximo Superado: ${weight}kg`);
                 }
             }
@@ -1315,6 +1389,7 @@ function createToastContainer() {
     const div = document.createElement('div'); div.id = 'toast-container'; document.body.appendChild(div); return div;
 }
 
+// --- GUARDADO INTELIGENTE (RANKING TEMPORAL) ---
 window.finishWorkout = async (rpeVal) => {
     try {
         window.closeModal('modal-rpe');
@@ -1335,7 +1410,7 @@ window.finishWorkout = async (rpeVal) => {
                 n: e.n, 
                 s: completedSets, 
                 superset: !!e.superset,
-                note: e.note || "" // Guardar nota específica del ejercicio
+                note: e.note || "" // Guardar nota
             };
         }).filter(e => e.s.length > 0);
 
@@ -1344,11 +1419,18 @@ window.finishWorkout = async (rpeVal) => {
         const workoutNum = (userData.stats?.workouts || 0) + 1;
         const volumeDisplay = totalKg >= 1000 ? (totalKg / 1000).toFixed(2) + "t" : totalKg.toFixed(0) + "kg";
 
+        // FECHAS PARA RANKING
+        const now = new Date();
+        const currentMonthKey = `${now.getFullYear()}_${now.getMonth()}`; 
+        const currentYearKey = `${now.getFullYear()}`; 
+
         await addDoc(collection(db, "workouts"), {
             uid: currentUser.uid, date: serverTimestamp(),
             routine: activeWorkout.name || "Rutina sin nombre",
             rpe: rpeVal, note: note, details: cleanLog,
-            workoutNumber: workoutNum, sessionVolume: Number(totalKg.toFixed(2))
+            workoutNumber: workoutNum, sessionVolume: Number(totalKg.toFixed(2)),
+            monthKey: currentMonthKey, 
+            yearKey: currentYearKey
         });
 
         const updates = {
@@ -1356,8 +1438,20 @@ window.finishWorkout = async (rpeVal) => {
             "stats.totalSets": increment(totalSets),
             "stats.totalReps": increment(totalReps),
             "stats.totalKg": increment(totalKg),
-            "prs": userData.prs || {}
+            "prs": userData.prs || {},
+            "lastWorkoutDate": serverTimestamp()
         };
+        
+        // Actualizaciones Temporales (Mes/Año)
+        updates[`stats_month_${currentMonthKey}.kg`] = increment(totalKg);
+        updates[`stats_month_${currentMonthKey}.workouts`] = increment(1);
+        updates[`stats_month_${currentMonthKey}.reps`] = increment(totalReps);
+        updates[`stats_month_${currentMonthKey}.sets`] = increment(totalSets);
+
+        updates[`stats_year_${currentYearKey}.kg`] = increment(totalKg);
+        updates[`stats_year_${currentYearKey}.workouts`] = increment(1);
+        updates[`stats_year_${currentYearKey}.reps`] = increment(totalReps);
+
         for (const [muscle, count] of Object.entries(muscleCounts)) {
             updates[`muscleStats.${muscle}`] = increment(count);
         }
@@ -1709,21 +1803,6 @@ async function openCoachView(uid, u) {
         const date = d.date ? new Date(d.date.seconds*1000).toLocaleDateString() : '-';
         hList.innerHTML += `<div class="history-row" style="grid-template-columns: 60px 1fr 30px 80px;"><div>${date}</div><div style="overflow:hidden; text-overflow:ellipsis;">${d.routine}</div><div>${d.rpe === 'Suave' ? '🟢' : (d.rpe === 'Duro' ? '🟠' : '🔴')}</div><button class="btn-small btn-outline" onclick="viewWorkoutDetails('${d.routine}', '${encodeURIComponent(JSON.stringify(d.details))}', '${encodeURIComponent(d.note||"")}')">Ver</button></div>`;
     });
-}
-
-window.openCoachProgress = async () => {
-    if(!selectedUserCoach) return; const m = document.getElementById('modal-progress'); const s = document.getElementById('progress-select');
-    s.innerHTML = '<option>Cargando...</option>'; 
-    window.openModal('modal-progress');
-    try {
-        const snap = await getDocs(query(collection(db, "workouts"), where("uid", "==", selectedUserCoach)));
-        if (snap.empty) { s.innerHTML = '<option>Sin historial</option>'; return; }
-        const history = snap.docs.map(d => d.data()).sort((a,b) => a.date - b.date);
-        const uniqueExercises = new Set(); history.forEach(w => { if (w.details) w.details.forEach(ex => uniqueExercises.add(ex.n)); });
-        s.innerHTML = '<option value="">-- Selecciona Ejercicio --</option>';
-        Array.from(uniqueExercises).sort().forEach(exName => s.add(new Option(exName, exName)));
-        window.tempHistoryCache = history;
-    } catch (e) { s.innerHTML = '<option>Error</option>'; }
 }
 
 window.viewWorkoutDetails = (title, dataStr, noteStr) => {
