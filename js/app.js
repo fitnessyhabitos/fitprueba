@@ -4,7 +4,7 @@ import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, q
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 import { EXERCISES } from './data.js';
 
-console.log("⚡ FIT DATA: App Iniciada (Pro Mode - Atomic Timer)...");
+console.log("⚡ FIT DATA: App Iniciada (iOS Native Audio FIXED Base64)...");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDW40Lg6QvBc3zaaA58konqsH3QtDrRmyM",
@@ -37,9 +37,9 @@ let activeWorkout = null;
 let timerInt = null; 
 let durationInt = null;
 let wakeLock = null;
-let totalRestTime = 60; // Para animación SVG
-let restEndTime = 0;    // VARIABLE CRÍTICA PARA EL FIX DE TIEMPO
-let noteTargetIndex = null; 
+let totalRestTime = 60; 
+let restEndTime = 0; // Fix para tiempo delta
+let noteTargetIndex = null;
 
 // Filtros Ranking
 let rankFilterTime = 'all';    
@@ -68,10 +68,11 @@ let currentRoutineSelections = [];
 window.currentRoutineSelections = currentRoutineSelections; 
 let swapTargetIndex = null; 
 let selectedPlanForMassAssign = null; 
+let assignMode = 'plan'; 
+let selectedRoutineForMassAssign = null; 
 
-// --- GESTIÓN DE SCROLL LOCK (SOPORTE IOS) ---
+// --- SCROLL LOCK IOS ---
 let scrollPos = 0;
-
 window.openModal = (id) => {
     scrollPos = window.pageYOffset;
     document.body.style.top = `-${scrollPos}px`;
@@ -79,7 +80,6 @@ window.openModal = (id) => {
     const m = document.getElementById(id);
     if(m) m.classList.add('active');
 };
-
 window.closeModal = (id) => {
     const m = document.getElementById(id);
     if(m) m.classList.remove('active');
@@ -92,75 +92,59 @@ const normalizeText = (text) => {
     if(!text) return "";
     return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 };
-
 window.toggleElement = (id) => {
     const el = document.getElementById(id);
     if(el) el.classList.toggle('hidden');
 };
 
-// --- AUDIO ENGINE (HYBRID: HTML5 AUDIO + WEB AUDIO API) ---
-const SILENT_MP3 = "data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjIwLjEwMAAAAAAAAAAAAAAA//oeEsAAAAAAAASwgAAAAEAAGiAAAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//oeEsAA1gAAASwgAAAAEAAGiAAAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//oeEsAA1gAAASwgAAAAEAAGiAAAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
+// --- AUDIO ENGINE (BASE64 + HANDLERS) ---
+// Este string es un MP3 de silencio válido.
+const SILENT_MP3_B64 = "data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU2LjQwLjEwMQAAAAAAAAAAAAAA//OEAAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAAEAAABIADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV6urq6urq6urq6urq6urq6urq6urq6urq6v////////////////////////////////8AAAAATGF2YzU2LjQwLjEwMQAAAAAAAAAAAAAA//OEAAABAAAAAgIAESAAAAABiAMAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//OEABAAAAABBAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
-let htmlAudioElement = null;
+let htmlAudioElement = new Audio(SILENT_MP3_B64);
+htmlAudioElement.loop = true;
+htmlAudioElement.preload = 'auto';
+htmlAudioElement.volume = 1.0; 
 
-function playSilentAudio() {
-    if (!htmlAudioElement) {
-        htmlAudioElement = new Audio(SILENT_MP3);
-        htmlAudioElement.loop = true;
-        htmlAudioElement.preload = 'auto';
-        htmlAudioElement.volume = 1.0; 
-    }
-
-    htmlAudioElement.play().then(() => {
-        if ('mediaSession' in navigator) {
-            navigator.mediaSession.setActionHandler('play', () => { 
-                htmlAudioElement.play();
-                navigator.mediaSession.playbackState = "playing"; 
-            });
-            navigator.mediaSession.setActionHandler('pause', () => { 
-                navigator.mediaSession.playbackState = "playing"; 
-            });
-            navigator.mediaSession.setActionHandler('previoustrack', () => window.addRestTime(-10));
-            navigator.mediaSession.setActionHandler('nexttrack', () => window.addRestTime(10));
-
-            navigator.mediaSession.metadata = new MediaMetadata({
-                title: 'Entrenamiento Activo',
-                artist: 'Fit Data Pro',
-                album: 'Toque para volver',
-                artwork: [{ src: 'logo.png', sizes: '512x512', type: 'image/png' }]
-            });
-        }
-    }).catch(e => console.log("Audio background pendiente de interacción...", e));
-
-    if (!audioCtx) {
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        audioCtx = new AudioContext();
-    }
-    if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
-    }
-}
-
-function unlockAudio() {
-    playSilentAudio();
-    if(!audioCtx) {
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        audioCtx = new AudioContext();
-    }
-    if(audioCtx.state === 'suspended') { 
-        audioCtx.resume();
-    }
-}
-
-document.addEventListener('touchstart', unlockAudio, {once:true});
-document.addEventListener('click', unlockAudio, {once:true});
-
-function play5Beeps() {
+function initAudioEngine() {
+    // 1. Inicializar Web Audio (Beeps)
     if (!audioCtx) {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         audioCtx = new AudioContext();
     }
     if (audioCtx.state === 'suspended') audioCtx.resume();
+
+    // 2. Inicializar HTML5 Audio (Isla Dinámica)
+    // Reproducimos y registramos handlers INMEDIATAMENTE
+    htmlAudioElement.play().then(() => {
+        if ('mediaSession' in navigator) {
+            // iOS OCULTA el reproductor si no hay handlers definidos.
+            navigator.mediaSession.setActionHandler('play', () => { 
+                htmlAudioElement.play();
+                navigator.mediaSession.playbackState = "playing"; 
+            });
+            navigator.mediaSession.setActionHandler('pause', () => { 
+                // Hack: Si el usuario pausa, lo volvemos a poner en playing para que no se quite el timer
+                navigator.mediaSession.playbackState = "playing"; 
+            });
+            navigator.mediaSession.setActionHandler('previoustrack', () => window.addRestTime(-10));
+            navigator.mediaSession.setActionHandler('nexttrack', () => window.addRestTime(10));
+            
+            // Establecer estado inicial
+            navigator.mediaSession.playbackState = "playing";
+        }
+    }).catch(e => {
+        console.log("Audio unlock fallido (esperando siguiente click)", e);
+    });
+}
+
+// Listeners globales para el primer toque
+document.body.addEventListener('touchstart', initAudioEngine, {once:true});
+document.body.addEventListener('click', initAudioEngine, {once:true});
+
+function play5Beeps() {
+    if(!audioCtx) { initAudioEngine(); return; } // Intento de recuperación
+    if(audioCtx.state === 'suspended') audioCtx.resume();
 
     const now = audioCtx.currentTime;
     for(let i=0; i<5; i++) {
@@ -168,12 +152,9 @@ function play5Beeps() {
         const gain = audioCtx.createGain();
         osc.type = 'square'; 
         osc.frequency.setValueAtTime(880, now + (i * 0.6)); 
-        osc.connect(gain); 
-        gain.connect(audioCtx.destination);
-        const start = now + (i * 0.6); 
-        const end = start + 0.15;
-        osc.start(start); 
-        osc.stop(end);
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        const start = now + (i * 0.6); const end = start + 0.15;
+        osc.start(start); osc.stop(end);
         gain.gain.setValueAtTime(0, start);
         gain.gain.linearRampToValueAtTime(0.5, start + 0.02);
         gain.gain.exponentialRampToValueAtTime(0.01, end);
@@ -182,18 +163,13 @@ function play5Beeps() {
 window.testSound = () => { play5Beeps(); };
 
 window.enableNotifications = () => {
-    if (!("Notification" in window)) {
-        alert("Tu dispositivo no soporta notificaciones web. (En iPhone usa 'Añadir a Inicio')");
-        return;
-    }
-    Notification.requestPermission().then((permission) => {
-        if (permission === "granted") {
-            if("vibrate" in navigator) navigator.vibrate([200, 100, 200]);
-            new Notification("Fit Data", { body: "✅ Notificaciones activadas.", icon: "logo.png" });
-            alert("✅ Vinculado. El reloj vibrará al acabar.");
-        } else {
-            alert("❌ Permiso denegado. Revisa la configuración.");
-        }
+    if (!("Notification" in window)) return alert("Tu dispositivo no soporta notificaciones.");
+    Notification.requestPermission().then((p) => {
+        if (p === "granted") {
+            if("vibrate" in navigator) navigator.vibrate([200]);
+            new Notification("Fit Data", { body: "✅ Notificaciones listas.", icon: "logo.png" });
+            alert("✅ Vinculado.");
+        } else alert("❌ Permiso denegado.");
     });
 };
 
@@ -204,21 +180,16 @@ onAuthStateChanged(auth, async (user) => {
         if(snap.exists()){
             userData = snap.data();
             checkPhotoReminder();
-            
             if(userData.role === 'admin' || userData.role === 'assistant') {
-                const btn = document.getElementById('top-btn-coach');
-                if(btn) btn.classList.remove('hidden');
+                document.getElementById('top-btn-coach').classList.remove('hidden');
             }
-
             if(userData.role !== 'admin' && userData.role !== 'assistant' && !sessionStorage.getItem('notif_dismissed')) {
                 const routinesSnap = await getDocs(query(collection(db, "routines"), where("assignedTo", "array-contains", user.uid)));
                 if(!routinesSnap.empty) document.getElementById('notif-badge').style.display = 'block';
             }
-
             if(userData.approved){
                 setTimeout(() => { document.getElementById('loading-screen').classList.add('hidden'); }, 1500); 
                 document.getElementById('main-header').classList.remove('hidden');
-                
                 loadRoutines();
                 const savedW = localStorage.getItem('fit_active_workout');
                 if(savedW) {
@@ -249,15 +220,13 @@ window.switchTab = (t) => {
     document.getElementById(t).classList.add('active');
     document.getElementById('main-container').scrollTop = 0;
     document.querySelectorAll('.top-nav-item').forEach(n => n.classList.remove('active'));
-    
     if (t === 'routines-view') document.getElementById('top-btn-routines').classList.add('active');
     if (t === 'profile-view') {
         document.getElementById('top-btn-profile').classList.add('active');
         loadProfile();
     }
     if (t === 'admin-view' || t === 'coach-detail-view') {
-        const btnCoach = document.getElementById('top-btn-coach');
-        if(btnCoach) btnCoach.classList.add('active');
+        document.getElementById('top-btn-coach').classList.add('active');
     }
 };
 
@@ -266,9 +235,7 @@ window.logout = () => signOut(auth).then(()=>location.reload());
 
 window.recoverPass = async () => {
     const email = prompt("Introduce tu email:");
-    if(email) {
-        try { await sendPasswordResetEmail(auth, email); alert("📧 Correo enviado."); } catch(e) { alert("Error: " + e.message); }
-    }
+    if(email) try { await sendPasswordResetEmail(auth, email); alert("📧 Correo enviado."); } catch(e) { alert("Error: " + e.message); }
 };
 window.dismissNotif = () => { document.getElementById('notif-badge').style.display = 'none'; switchTab('routines-view'); sessionStorage.setItem('notif_dismissed', 'true'); };
 
@@ -342,7 +309,6 @@ window.openEditor = async (id = null) => {
         const docSnap = await getDoc(doc(db, "routines", id));
         const r = docSnap.data();
         document.getElementById('editor-name').value = r.name;
-        
         currentRoutineSelections = r.exercises.map(ex => ({
             n: ex.n || ex, s: ex.s || false, series: ex.series || 5, reps: ex.reps || "20-16-16-16-16"
         }));
@@ -375,37 +341,26 @@ function renderExercises(l) {
         d.innerHTML = `<img src="${e.img}" onerror="this.src='logo.png'"><span>${e.n}</span>`;
         d.onclick = () => { 
             const index = currentRoutineSelections.findIndex(x => x.n === e.n);
-            if(index > -1) { 
-                currentRoutineSelections.splice(index, 1);
-            } else { 
-                currentRoutineSelections.push({ n: e.n, s: false, series: 5, reps: "20-16-16-16-16" });
-            } 
-            renderExercises(l);
-            renderSelectedSummary(); 
+            if(index > -1) { currentRoutineSelections.splice(index, 1); } 
+            else { currentRoutineSelections.push({ n: e.n, s: false, series: 5, reps: "20-16-16-16-16" }); } 
+            renderExercises(l); renderSelectedSummary(); 
         };
         c.appendChild(d);
     });
 }
 
 window.renderSelectedSummary = () => {
-    const div = document.getElementById('selected-summary'); 
-    div.innerHTML = '';
+    const div = document.getElementById('selected-summary'); div.innerHTML = '';
     window.currentRoutineSelections = currentRoutineSelections;
-
     currentRoutineSelections.forEach((obj, idx) => { 
-        const pill = document.createElement('div'); 
-        pill.className = 'summary-item-card'; 
+        const pill = document.createElement('div'); pill.className = 'summary-item-card'; 
         let linkStyle = obj.s ? "color: white; font-weight:bold; text-shadow: 0 0 5px white;" : "color:rgba(255,255,255,0.2);";
         pill.innerHTML = `
             <span class="summary-item-name">${obj.n}</span>
             <div class="summary-inputs">
-                <input type="number" value="${obj.series || 5}" 
-                    oninput="window.currentRoutineSelections[${idx}].series = parseInt(this.value) || 0" 
-                    placeholder="Ser">
+                <input type="number" value="${obj.series || 5}" oninput="window.currentRoutineSelections[${idx}].series = parseInt(this.value) || 0" placeholder="Ser">
                 <span>x</span>
-                <input type="text" value="${obj.reps || '20-16-16-16-16'}" style="width:110px" 
-                    oninput="window.currentRoutineSelections[${idx}].reps = this.value" 
-                    placeholder="Reps">
+                <input type="text" value="${obj.reps || '20-16-16-16-16'}" style="width:110px" oninput="window.currentRoutineSelections[${idx}].reps = this.value" placeholder="Reps">
                 <span style="font-size:1.2rem; cursor:pointer; ${linkStyle}" onclick="toggleSuperset(${idx})">🔗</span>
                 <b class="btn-remove-ex" onclick="removeSelection('${obj.n}')" style="cursor:pointer; margin-left:10px;">✕</b>
             </div>`; 
@@ -423,36 +378,20 @@ window.toggleSuperset = (idx) => {
 window.removeSelection = (name) => { 
     currentRoutineSelections = currentRoutineSelections.filter(x => x.n !== name); 
     renderSelectedSummary(); 
-    const searchVal = document.getElementById('ex-search').value; 
-    window.filterExercises(searchVal); 
+    window.filterExercises(document.getElementById('ex-search').value); 
 }
 
 window.saveRoutine = async () => {
     const n = document.getElementById('editor-name').value;
     const s = window.currentRoutineSelections; 
-    if(!n || s.length === 0) return alert("❌ Faltan datos (Nombre o Ejercicios)");
-    const btn = document.getElementById('btn-save-routine'); 
-    btn.innerText = "💾 GUARDANDO...";
+    if(!n || s.length === 0) return alert("❌ Faltan datos");
+    const btn = document.getElementById('btn-save-routine'); btn.innerText = "💾 GUARDANDO...";
     try {
-        const data = { 
-            uid: currentUser.uid, 
-            name: n, 
-            exercises: s, 
-            createdAt: serverTimestamp(), 
-            assignedTo: [] 
-        };
-        if(editingRoutineId) {
-            await updateDoc(doc(db, "routines", editingRoutineId), { name: n, exercises: s });
-        } else {
-            await addDoc(collection(db, "routines"), data);
-        }
-        alert("✅ Rutina guardada correctamente");
-        switchTab('routines-view');
-    } catch(e) { 
-        alert("Error al guardar: " + e.message); 
-    } finally { 
-        btn.innerText = "GUARDAR"; 
-    }
+        const data = { uid: currentUser.uid, name: n, exercises: s, createdAt: serverTimestamp(), assignedTo: [] };
+        if(editingRoutineId) { await updateDoc(doc(db, "routines", editingRoutineId), { name: n, exercises: s }); } 
+        else { await addDoc(collection(db, "routines"), data); }
+        alert("✅ Guardado"); switchTab('routines-view');
+    } catch(e) { alert("Error: " + e.message); } finally { btn.innerText = "GUARDAR"; }
 };
 
 window.delRoutine = async (id) => { if(confirm("¿Borrar?")) await deleteDoc(doc(db,"routines",id)); window.loadAdminLibrary(); };
@@ -476,8 +415,7 @@ window.uploadAvatar = (inp) => {
         uploadBytes(storageRef, file).then(async (snapshot) => {
             const url = await getDownloadURL(snapshot.ref);
             await updateDoc(doc(db,"users",currentUser.uid), {photo: url}); 
-            userData.photo = url; 
-            window.loadProfile();
+            userData.photo = url; window.loadProfile();
         }).catch(e => alert("Error subiendo foto: " + e.message));
     } 
 };
@@ -487,14 +425,10 @@ window.loadCompImg = (inp, field) => {
         const file = inp.files[0];
         const r = new FileReader(); 
         r.onload = (e) => { 
-            const img = new Image(); 
-            img.src = e.target.result; 
+            const img = new Image(); img.src = e.target.result; 
             img.onload = async () => { 
-                const canvas = document.createElement('canvas'); 
-                const ctx = canvas.getContext('2d'); 
-                const scale = 800 / img.width; 
-                canvas.width = 800; 
-                canvas.height = img.height * scale; 
+                const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d'); 
+                const scale = 800 / img.width; canvas.width = 800; canvas.height = img.height * scale; 
                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height); 
                 canvas.toBlob(async (blob) => {
                     const prefix = currentPose === 'front' ? 'front' : 'back';
@@ -509,8 +443,7 @@ window.loadCompImg = (inp, field) => {
                         const dateField = field === 'before' ? `dateBefore${fieldPrefix}` : `dateAfter${fieldPrefix}`; 
                         const today = new Date().toLocaleDateString(); 
                         const record = { date: today, url: url };
-                        let update = {}; 
-                        update[fieldName] = url; update[dateField] = today;
+                        let update = {}; update[fieldName] = url; update[dateField] = today;
                         const histField = fieldPrefix === '' ? 'photoHistoryFront' : 'photoHistoryBack';
                         update[histField] = arrayUnion(record);
                         await updateDoc(doc(db, "users", currentUser.uid), update); 
@@ -521,8 +454,7 @@ window.loadCompImg = (inp, field) => {
                     } catch(err) { alert("Error: " + err.message); }
                 }, 'image/jpeg', 0.8);
             }; 
-        }; 
-        r.readAsDataURL(file); 
+        }; r.readAsDataURL(file); 
     } 
 };
 
@@ -530,10 +462,8 @@ window.deletePhoto = async (type) => {
     if(!confirm("¿Borrar?")) return; 
     const prefix = currentPose === 'front' ? '' : '_back'; 
     const f = type === 'before' ? `photoBefore${prefix}` : `photoAfter${prefix}`; 
-    let u={}; u[f]=""; 
-    await updateDoc(doc(db,"users",currentUser.uid),u); 
-    userData[f]=""; 
-    updatePhotoDisplay(userData); 
+    let u={}; u[f]=""; await updateDoc(doc(db,"users",currentUser.uid),u); 
+    userData[f]=""; updatePhotoDisplay(userData); 
 };
 
 window.moveSlider = (v) => { 
@@ -549,8 +479,7 @@ window.switchCoachPose = (pose) => {
 };
 
 function updateCoachPhotoDisplay(pose) {
-    const u = selectedUserObj;
-    if(!u) return;
+    const u = selectedUserObj; if(!u) return;
     const prefix = pose === 'front' ? '' : '_back';
     const histField = prefix === '' ? 'photoHistoryFront' : 'photoHistoryBack';
     const history = u[histField] || [];
@@ -577,11 +506,9 @@ function updateCoachPhotoDisplay(pose) {
     } else {
         history.forEach((h, i) => {
             const label = h.date || `Foto ${i+1}`;
-            selB.add(new Option(label, h.url));
-            selA.add(new Option(label, h.url));
+            selB.add(new Option(label, h.url)); selA.add(new Option(label, h.url));
         });
-        selB.selectedIndex = 0;
-        selA.selectedIndex = history.length - 1;
+        selB.selectedIndex = 0; selA.selectedIndex = history.length - 1;
     }
     window.updateCoachSliderImages();
 }
@@ -591,8 +518,7 @@ window.updateCoachSliderImages = () => {
     const urlA = document.getElementById('c-sel-after').value;
     const imgB = document.getElementById('c-img-before');
     const imgA = document.getElementById('c-img-after');
-    if(imgB) imgB.src = urlB;
-    if(imgA) imgA.src = urlA;
+    if(imgB) imgB.src = urlB; if(imgA) imgA.src = urlA;
 };
 
 window.moveCoachSlider = (v) => {
@@ -807,7 +733,15 @@ window.startWorkout = async (rid) => {
         if(sameRoutine.length > 0) lastWorkoutData = sameRoutine[0].details;
 
         const now = Date.now();
-        playSilentAudio();
+        
+        // --- AUDIO TRIGGER (iOS Safe) ---
+        // Forzamos la reproducción del audio HTML5 al iniciar el entreno para que esté "caliente"
+        if(htmlAudioElement) {
+             htmlAudioElement.play().then(() => {
+                 // Inmediatamente pausamos para no tener ruido, pero la sesión ya está activa
+                 htmlAudioElement.pause();
+             }).catch(e => {});
+        }
         
         activeWorkout = { 
             name: r.name, 
@@ -886,7 +820,7 @@ window.saveNote = () => {
     showToast(txt ? "📝 Nota guardada" : "🗑️ Nota borrada");
 };
 
-// --- GESTIÓN DE RANKING AVANZADO ---
+// --- GESTIÓN DE RANKING ---
 window.toggleRankingOptIn = async (val) => {
     try {
         await updateDoc(doc(db, "users", currentUser.uid), { rankingOptIn: val });
@@ -1202,6 +1136,18 @@ window.requestNotifPermission = () => {
     }
 };
 
+const updateMediaSession = (titleText, artistText) => {
+    if ('mediaSession' in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+            title: titleText,       
+            artist: artistText,   
+            album: 'Fit Data Pro',
+            artwork: [{ src: 'logo.png', sizes: '512x512', type: 'image/png' }]
+        });
+        navigator.mediaSession.playbackState = "playing";
+    }
+};
+
 // --- VISUALES DEL CRONÓMETRO SVG (ROJO CORPORATIVO) + TIME FIX ---
 function updateTimerVisuals(timeLeft) {
     const display = document.getElementById('timer-display');
@@ -1226,7 +1172,15 @@ function updateTimerVisuals(timeLeft) {
 // --- OPEN REST CON TIEMPO DELTA (FIX PARA QUE NO SE PARE) ---
 function openRest() {
     window.openModal('modal-timer');
-    playSilentAudio(); 
+    
+    // Llamar al audio
+    if(htmlAudioElement) {
+        htmlAudioElement.play()
+            .then(() => { if('mediaSession' in navigator) navigator.mediaSession.playbackState = "playing"; })
+            .catch(e => console.log("Audio play blocked", e));
+    } else {
+        initAudioEngine(); // Intentar recuperar si no existe
+    }
     
     let duration = parseInt(userData.restTime) || 60;
     totalRestTime = duration; 
@@ -1236,6 +1190,7 @@ function openRest() {
 
     updateTimerVisuals(duration);
     
+    // Metadatos iniciales
     if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({
             title: `DESCANSO: ${duration}s`,
@@ -1243,7 +1198,6 @@ function openRest() {
             album: 'Fit Data Pro',
             artwork: [{ src: 'logo.png', sizes: '512x512', type: 'image/png' }]
         });
-        navigator.mediaSession.playbackState = "playing";
     }
 
     if(timerInt) clearInterval(timerInt);
@@ -1256,7 +1210,7 @@ function openRest() {
         if (left >= 0) {
              updateTimerVisuals(left);
              
-             // Actualizar Isla Dinámica (throttled para no saturar)
+             // Actualizar Isla Dinámica (throttled)
              if (left % 2 === 0 && 'mediaSession' in navigator) {
                  navigator.mediaSession.metadata.title = `⏳ DESCANSO: ${left}s`;
              }
@@ -1280,7 +1234,7 @@ function openRest() {
 window.closeTimer = () => {
     clearInterval(timerInt);
     window.closeModal('modal-timer');
-    // Mantenemos sesión activa
+    // No pausamos el audio para no perder el foco de la isla dinámica
     if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({
             title: 'Entrenando 💪',
@@ -1301,11 +1255,9 @@ window.addRestTime = (s) => {
     const now = Date.now();
     const left = Math.ceil((restEndTime - now) / 1000);
     
-    // Ajustar visuales del total para que la barra no salte feo
     if(s > 0) totalRestTime += s; 
     
     updateTimerVisuals(left);
-    
     if ('mediaSession' in navigator) navigator.mediaSession.metadata.title = `DESCANSO: ${left}s`;
     
     timerInt = setInterval(() => {
