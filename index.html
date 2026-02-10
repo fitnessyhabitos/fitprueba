@@ -314,17 +314,48 @@
             </div>
         </section>
 
-        <section id="ranking-view" class="view-container">
-            <div style="text-align:center; margin-bottom:20px;">
-                <h2 style="color:var(--accent-color);">HALL OF FAME</h2>
-                <p style="color:#888; font-size:0.8rem;">Atletas más constantes (Tonelaje Total)</p>
-            </div>
-            <div id="ranking-list"></div>
-            <div class="tip-box" style="margin-top:20px;">
-                💡 Solo aparecen los usuarios que han activado "Participar en Ranking" en su perfil.
-            </div>
-            <button class="btn-outline" onclick="window.switchTab('profile-view')">MI PERFIL</button>
-        </section>
+       <section id="ranking-view" class="view-container">
+    <div style="text-align:center; margin-bottom:15px;">
+        <h2 style="color:var(--accent-color); font-family:var(--font-sport); margin:0;">LEADERBOARD</h2>
+        <p style="color:#666; font-size:0.7rem;">Compite contra la comunidad</p>
+    </div>
+
+    <div class="rank-filter-row">
+        <span class="filter-label">PERIODO:</span>
+        <div class="pill-selector">
+            <div id="time-all" class="pill active" onclick="window.changeRankFilter('time', 'all')">♾️ SIEMPRE</div>
+            <div id="time-month" class="pill" onclick="window.changeRankFilter('time', 'month')">📅 MES</div>
+            <div id="time-year" class="pill" onclick="window.changeRankFilter('time', 'year')">📆 AÑO</div>
+        </div>
+    </div>
+
+    <div class="rank-filter-row">
+        <span class="filter-label">LIGA:</span>
+        <div class="pill-selector">
+            <div id="gender-all" class="pill active" onclick="window.changeRankFilter('gender', 'all')">🌍 MIXTA</div>
+            <div id="gender-male" class="pill" onclick="window.changeRankFilter('gender', 'male')">🚹 HOMBRE</div>
+            <div id="gender-female" class="pill" onclick="window.changeRankFilter('gender', 'female')">🚺 MUJER</div>
+        </div>
+    </div>
+
+    <div style="margin-bottom:15px;">
+        <span class="filter-label" style="margin-left:5px;">CATEGORÍA:</span>
+        <div class="scroll-pills">
+            <div id="cat-kg" class="pill-cat active" onclick="window.changeRankFilter('cat', 'kg')">🏋️ VOLUMEN (Kg)</div>
+            <div id="cat-workouts" class="pill-cat" onclick="window.changeRankFilter('cat', 'workouts')">📅 ENTRENOS</div>
+            <div id="cat-prs" class="pill-cat" onclick="window.changeRankFilter('cat', 'prs')">🏆 RÉCORDS (PRs)</div>
+            <div id="cat-reps" class="pill-cat" onclick="window.changeRankFilter('cat', 'reps')">🔥 REPS TOTALES</div>
+            <div id="cat-sets" class="pill-cat" onclick="window.changeRankFilter('cat', 'sets')">📊 SERIES</div>
+        </div>
+    </div>
+
+    <div id="ranking-list" class="ranking-list-container"></div>
+    
+    <div class="tip-box" style="margin-top:20px;">
+        💡 Activa "Participar en Ranking" en tu perfil para aparecer aquí.
+    </div>
+    <button class="btn-outline" onclick="window.switchTab('profile-view')">MI PERFIL</button>
+</section>
 
         <section id="admin-view" class="view-container">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
