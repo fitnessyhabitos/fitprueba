@@ -146,8 +146,10 @@
             </div>
 
             <div class="card">
-                <h3>MAPA MUSCULAR</h3>
-                <div id="heatmap-container"></div>
+                <h3>MAPA DE SIMETRÍA</h3>
+                <div style="height:300px; width:100%; position:relative;">
+                    <canvas id="userMuscleChart"></canvas>
+                </div>
             </div>
 
             <div class="card">
@@ -314,48 +316,48 @@
             </div>
         </section>
 
-       <section id="ranking-view" class="view-container">
-    <div style="text-align:center; margin-bottom:15px;">
-        <h2 style="color:var(--accent-color); font-family:var(--font-sport); margin:0;">LEADERBOARD</h2>
-        <p style="color:#666; font-size:0.7rem;">Compite contra la comunidad</p>
-    </div>
+        <section id="ranking-view" class="view-container">
+            <div style="text-align:center; margin-bottom:15px;">
+                <h2 style="color:var(--accent-color); font-family:var(--font-sport); margin:0;">LEADERBOARD</h2>
+                <p style="color:#666; font-size:0.7rem;">Compite contra la comunidad</p>
+            </div>
 
-    <div class="rank-filter-row">
-        <span class="filter-label">PERIODO:</span>
-        <div class="pill-selector">
-            <div id="time-all" class="pill active" onclick="window.changeRankFilter('time', 'all')">♾️ SIEMPRE</div>
-            <div id="time-month" class="pill" onclick="window.changeRankFilter('time', 'month')">📅 MES</div>
-            <div id="time-year" class="pill" onclick="window.changeRankFilter('time', 'year')">📆 AÑO</div>
-        </div>
-    </div>
+            <div class="rank-filter-row">
+                <span class="filter-label">PERIODO:</span>
+                <div class="pill-selector">
+                    <div id="time-all" class="pill active" onclick="window.changeRankFilter('time', 'all')">♾️ SIEMPRE</div>
+                    <div id="time-month" class="pill" onclick="window.changeRankFilter('time', 'month')">📅 MES</div>
+                    <div id="time-year" class="pill" onclick="window.changeRankFilter('time', 'year')">📆 AÑO</div>
+                </div>
+            </div>
 
-    <div class="rank-filter-row">
-        <span class="filter-label">LIGA:</span>
-        <div class="pill-selector">
-            <div id="gender-all" class="pill active" onclick="window.changeRankFilter('gender', 'all')">🌍 MIXTA</div>
-            <div id="gender-male" class="pill" onclick="window.changeRankFilter('gender', 'male')">🚹 HOMBRE</div>
-            <div id="gender-female" class="pill" onclick="window.changeRankFilter('gender', 'female')">🚺 MUJER</div>
-        </div>
-    </div>
+            <div class="rank-filter-row">
+                <span class="filter-label">LIGA:</span>
+                <div class="pill-selector">
+                    <div id="gender-all" class="pill active" onclick="window.changeRankFilter('gender', 'all')">🌍 MIXTA</div>
+                    <div id="gender-male" class="pill" onclick="window.changeRankFilter('gender', 'male')">🚹 HOMBRE</div>
+                    <div id="gender-female" class="pill" onclick="window.changeRankFilter('gender', 'female')">🚺 MUJER</div>
+                </div>
+            </div>
 
-    <div style="margin-bottom:15px;">
-        <span class="filter-label" style="margin-left:5px;">CATEGORÍA:</span>
-        <div class="scroll-pills">
-            <div id="cat-kg" class="pill-cat active" onclick="window.changeRankFilter('cat', 'kg')">🏋️ VOLUMEN (Kg)</div>
-            <div id="cat-workouts" class="pill-cat" onclick="window.changeRankFilter('cat', 'workouts')">📅 ENTRENOS</div>
-            <div id="cat-prs" class="pill-cat" onclick="window.changeRankFilter('cat', 'prs')">🏆 RÉCORDS (PRs)</div>
-            <div id="cat-reps" class="pill-cat" onclick="window.changeRankFilter('cat', 'reps')">🔥 REPS TOTALES</div>
-            <div id="cat-sets" class="pill-cat" onclick="window.changeRankFilter('cat', 'sets')">📊 SERIES</div>
-        </div>
-    </div>
+            <div style="margin-bottom:15px;">
+                <span class="filter-label" style="margin-left:5px;">CATEGORÍA:</span>
+                <div class="scroll-pills">
+                    <div id="cat-kg" class="pill-cat active" onclick="window.changeRankFilter('cat', 'kg')">🏋️ VOLUMEN (Kg)</div>
+                    <div id="cat-workouts" class="pill-cat" onclick="window.changeRankFilter('cat', 'workouts')">📅 ENTRENOS</div>
+                    <div id="cat-prs" class="pill-cat" onclick="window.changeRankFilter('cat', 'prs')">🏆 RÉCORDS (PRs)</div>
+                    <div id="cat-reps" class="pill-cat" onclick="window.changeRankFilter('cat', 'reps')">🔥 REPS TOTALES</div>
+                    <div id="cat-sets" class="pill-cat" onclick="window.changeRankFilter('cat', 'sets')">📊 SERIES</div>
+                </div>
+            </div>
 
-    <div id="ranking-list" class="ranking-list-container"></div>
-    
-    <div class="tip-box" style="margin-top:20px;">
-        💡 Activa "Participar en Ranking" en tu perfil para aparecer aquí.
-    </div>
-    <button class="btn-outline" onclick="window.switchTab('profile-view')">MI PERFIL</button>
-</section>
+            <div id="ranking-list" class="ranking-list-container"></div>
+            
+            <div class="tip-box" style="margin-top:20px;">
+                💡 Activa "Participar en Ranking" en tu perfil para aparecer aquí.
+            </div>
+            <button class="btn-outline" onclick="window.switchTab('profile-view')">MI PERFIL</button>
+        </section>
 
         <section id="admin-view" class="view-container">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
@@ -378,7 +380,6 @@
             
             <div class="card hidden" id="admin-plans-card">
                 <h3>Planificaciones (Packs)</h3>
-                
                 <div style="background:#1a1a1a; padding:15px; border-radius:8px; border:1px solid #333; margin-bottom:20px;">
                     <h4 style="margin-top:0; color:var(--accent-color); font-size:0.9rem;">+ Crear Nuevo Plan</h4>
                     <input type="text" id="new-plan-name" placeholder="Nombre (Ej: Mes 1 Hipertrofia)">
@@ -388,7 +389,6 @@
                     </div>
                     <button class="btn-small btn" onclick="window.createPlan()">CREAR PLAN</button>
                 </div>
-
                 <div id="admin-plans-list" class="plans-grid"></div>
             </div>
             <button class="btn-outline" onclick="window.switchTab('routines-view')">VOLVER</button>
@@ -463,6 +463,13 @@
                     <canvas id="coachMeasuresChart"></canvas>
                 </div>
             </div>
+            
+            <div class="card">
+                 <h3>MAPA MUSCULAR</h3>
+                 <div style="height:300px; width:100%; position:relative;">
+                    <canvas id="coachMuscleChart"></canvas>
+                 </div>
+            </div>
 
             <div id="coach-stats-text" class="stat-pill-grid" style="margin-bottom:20px;"></div>
 
@@ -493,9 +500,7 @@
                     <button class="btn-small btn-outline" style="width:auto; padding:0 15px;" onclick="window.goToCreateRoutine()">➕ CREAR</button>
                     <button class="btn-small btn" style="width:auto; padding:0 15px;" onclick="window.assignRoutine()">ENVIAR</button>
                 </div>
-                
                 <hr style="border:0; border-top:1px solid #333; margin:15px 0;">
-                
                 <label style="font-size:0.7rem; color:#ccc;">Asignar Plan (Pack):</label>
                 <div style="display:flex; gap:5px; margin-top:5px;">
                     <select id="coach-plan-select" style="margin:0;">
@@ -519,7 +524,6 @@
     <div id="modal-timer" class="modal">
         <div class="modal-content timer-content">
             <h3 style="color:var(--text-dim); letter-spacing:2px; font-size:0.9rem; margin-bottom:15px;">RECUPERACIÓN</h3>
-            
             <div class="timer-circle-container">
                 <svg class="timer-svg" width="200" height="200" viewBox="0 0 200 200">
                     <circle class="timer-bg-ring" cx="100" cy="100" r="90" fill="none" stroke="#222" stroke-width="12"></circle>
@@ -528,7 +532,6 @@
                 </svg>
                 <div id="timer-display" class="timer-number">60</div>
             </div>
-
             <div class="timer-controls">
                 <button class="btn-outline btn-timer-control" onclick="window.addRestTime(20)">+20s</button>
                 <button class="btn btn-timer-skip" onclick="window.closeTimer()">¡LISTO!</button>
@@ -546,7 +549,7 @@
             <button class="btn-outline" style="margin-top:10px;" onclick="window.closeModal('modal-assign-plan')">CANCELAR</button>
         </div>
     </div>
-
+    
     <div id="modal-swap" class="modal">
         <div class="modal-content">
             <h3>CAMBIAR EJERCICIO</h3>
@@ -582,20 +585,16 @@
    <div id="modal-progress" class="modal">
     <div class="modal-content">
         <h3>📈 EVOLUCIÓN DETALLADA</h3>
-        
         <select id="progress-select" onchange="window.renderProgressChart(this.value)" style="margin-bottom:20px;"></select>
-        
         <div style="height:250px; width:100%; position:relative;">
             <canvas id="progressChart"></canvas>
         </div>
-
         <div style="margin-top: 25px; padding-top: 15px; border-top: 1px solid #333;">
             <p style="font-size: 0.75rem; color: #888; margin-bottom: 10px; text-align: center;">Análisis externo (Excel / Google Sheets)</p>
             <button class="btn-small btn-outline" onclick="window.exportWorkoutHistory()" style="width: 100%; border-color: #00ffff; color: #00ffff; display: flex; align-items: center; justify-content: center; gap: 8px;">
                 <span>📥</span> DESCARGAR HISTORIAL (.CSV)
             </button>
         </div>
-
         <button class="btn-outline" style="margin-top:20px; width: 100%;" onclick="window.closeModal('modal-progress')">CERRAR</button>
     </div>
 </div>
