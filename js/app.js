@@ -4,7 +4,7 @@ import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, q
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 import { EXERCISES } from './data.js';
 
-console.log("⚡ FIT DATA: App Iniciada (Pro Audio - Native Timer Sync)...");
+console.log("⚡ FIT DATA: App Iniciada (Full Pro - Muscle Radar Dynamic)...");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDW40Lg6QvBc3zaaA58konqsH3QtDrRmyM",
@@ -46,6 +46,7 @@ let rankFilterTime = 'all';
 let rankFilterGender = 'all';  
 let rankFilterCat = 'kg';      
 
+// Gráficos
 let chartInstance = null; 
 let progressChart = null; 
 let fatChartInstance = null; 
@@ -54,8 +55,10 @@ let measureChartInstance = null;
 let coachFatChart = null; 
 let coachBioChart = null; 
 let coachMeasureChart = null; 
-let radarChartInstance = null;
+let radarChartInstance = null; // RPE Modal
 let coachChart = null;
+let userRadarChart = null; // Profile View
+let coachRadarChart = null; // Coach View
 
 let selectedUserCoach = null; 
 let selectedUserObj = null; 
@@ -68,6 +71,8 @@ let currentRoutineSelections = [];
 window.currentRoutineSelections = currentRoutineSelections; 
 let swapTargetIndex = null; 
 let selectedPlanForMassAssign = null; 
+let assignMode = 'plan'; 
+let selectedRoutineForMassAssign = null; 
 
 // --- GESTIÓN DE SCROLL LOCK (SOPORTE IOS) ---
 let scrollPos = 0;
@@ -96,40 +101,28 @@ window.toggleElement = (id) => {
 };
 
 // --- AUDIO ENGINE (NATIVE SYNC) ---
-// MP3 más largo (10s) para evitar bucles muy cortos que iOS pausa
 const SILENT_MP3_URL = "https://raw.githubusercontent.com/anars/blank-audio/master/10-seconds-of-silence.mp3";
-
 let htmlAudioElement = new Audio(SILENT_MP3_URL);
 htmlAudioElement.loop = true;
 htmlAudioElement.preload = 'auto';
 htmlAudioElement.volume = 1.0; 
 
 function initAudioEngine() {
-    // 1. Inicializar Web Audio (Beeps)
     if (!audioCtx) {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         audioCtx = new AudioContext();
     }
     if (audioCtx.state === 'suspended') audioCtx.resume();
-
-    // 2. Inicializar HTML5 Audio (Isla Dinámica)
     htmlAudioElement.play().then(() => {
         if ('mediaSession' in navigator) {
-            // Handlers vitales para que iOS muestre la interfaz
             navigator.mediaSession.setActionHandler('play', () => { 
-                htmlAudioElement.play();
-                navigator.mediaSession.playbackState = "playing"; 
+                htmlAudioElement.play(); navigator.mediaSession.playbackState = "playing"; 
             });
             navigator.mediaSession.setActionHandler('pause', () => { 
-                navigator.mediaSession.playbackState = "playing"; // Evitamos pausa
+                navigator.mediaSession.playbackState = "playing"; 
             });
             navigator.mediaSession.setActionHandler('previoustrack', () => window.addRestTime(-10));
             navigator.mediaSession.setActionHandler('nexttrack', () => window.addRestTime(10));
-            navigator.mediaSession.setActionHandler('seekto', (details) => {
-                // Permitir seek si el usuario desliza la barra (opcional)
-            });
-
-            // Estado inicial neutro
             navigator.mediaSession.metadata = new MediaMetadata({
                 title: 'Fit Data Pro',
                 artist: 'Listo para entrenar',
@@ -139,14 +132,12 @@ function initAudioEngine() {
     }).catch(e => { console.log("Esperando interacción de usuario..."); });
 }
 
-// Listeners globales agresivos
 document.body.addEventListener('touchstart', initAudioEngine, {once:true});
 document.body.addEventListener('click', initAudioEngine, {once:true});
 
 function play5Beeps() {
     if(!audioCtx) { initAudioEngine(); return; }
     if(audioCtx.state === 'suspended') audioCtx.resume();
-
     const now = audioCtx.currentTime;
     for(let i=0; i<5; i++) {
         const osc = audioCtx.createOscillator();
@@ -239,6 +230,55 @@ window.recoverPass = async () => {
     if(email) try { await sendPasswordResetEmail(auth, email); alert("📧 Correo enviado."); } catch(e) { alert("Error: " + e.message); }
 };
 window.dismissNotif = () => { document.getElementById('notif-badge').style.display = 'none'; switchTab('routines-view'); sessionStorage.setItem('notif_dismissed', 'true'); };
+
+// --- NUEVA FUNCIÓN: RENDER MUSCLE RADAR (Compartida) ---
+function renderMuscleRadar(canvasId, stats) {
+    const ctx = document.getElementById(canvasId);
+    if(!ctx) return;
+    
+    // Destruir instancia previa si existe (según ID)
+    if(canvasId === 'userMuscleChart' && userRadarChart) userRadarChart.destroy();
+    if(canvasId === 'coachMuscleChart' && coachRadarChart) coachRadarChart.destroy();
+
+    const muscleGroups = ["Pecho", "Espalda", "Cuádriceps", "Isquios", "Hombros", "Bíceps", "Tríceps", "Glúteos"];
+    // Mapeo seguro de datos (si no existe el músculo, pon 0)
+    const dataValues = muscleGroups.map(m => stats[m] || 0);
+
+    const newChart = new Chart(ctx, {
+        type: 'radar',
+        data: {
+            labels: muscleGroups,
+            datasets: [{
+                label: 'Volumen Relativo',
+                data: dataValues,
+                backgroundColor: 'rgba(255, 51, 51, 0.4)',
+                borderColor: '#ff3333',
+                pointBackgroundColor: '#ff3333',
+                pointBorderColor: '#fff',
+                pointHoverBackgroundColor: '#fff',
+                pointHoverBorderColor: '#ff3333'
+            }]
+        },
+        options: {
+            scales: {
+                r: {
+                    angleLines: { color: '#333' },
+                    grid: { color: '#333' },
+                    pointLabels: { color: '#ccc', font: { size: 10 } },
+                    ticks: { display: false, backdropColor: 'transparent' },
+                    suggestedMin: 0
+                }
+            },
+            plugins: {
+                legend: { display: false }
+            },
+            maintainAspectRatio: false
+        }
+    });
+
+    if(canvasId === 'userMuscleChart') userRadarChart = newChart;
+    if(canvasId === 'coachMuscleChart') coachRadarChart = newChart;
+}
 
 function getExerciseData(name) {
     if(!name) return { img: 'logo.png', mInfo: {main:'General', sec:[]}, type:'c', v:null };
@@ -606,16 +646,9 @@ window.loadProfile = async () => {
             histDiv.innerHTML += `<div class="history-row" style="grid-template-columns: 1fr 40px;"><div><span style="color:#accent-color">${date}</span> - ${d.routine}</div><div style="text-align:right;">${btnVer}</div></div>`;
         });
     } catch(e) { histDiv.innerHTML = "Error."; }
-    const muscles = ["Pecho","Espalda","Cuádriceps","Isquios","Glúteos","Hombros","Bíceps","Tríceps"];
-    const hC = document.getElementById('heatmap-container'); hC.innerHTML = '';
-    const mS = userData.muscleStats || {};
-    muscles.forEach(m=>{
-        const count = mS[m] || 0;
-        const pct = Math.min((count / 20) * 100, 100); 
-        const d = document.createElement('div'); d.className = 'muscle-bar-group';
-        d.innerHTML = `<div class="muscle-label"><span>${m}</span><span>${count} series</span></div><div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>`;
-        hC.appendChild(d);
-    });
+    
+    // --- RENDERIZADO DEL MAPA MUSCULAR (RADAR CHART) ---
+    renderMuscleRadar('userMuscleChart', userData.muscleStats || {});
 }
 
 window.openDietView = () => {
@@ -1174,11 +1207,8 @@ function openRest() {
     
     // 1. Activar Audio (VITAL PARA IOS)
     if(htmlAudioElement) {
-        // En iOS, el audio debe estar "playing" para que la barra de progreso se mueva sola.
         htmlAudioElement.play()
-            .then(() => { 
-                if('mediaSession' in navigator) navigator.mediaSession.playbackState = "playing"; 
-            })
+            .then(() => { if('mediaSession' in navigator) navigator.mediaSession.playbackState = "playing"; })
             .catch(e => console.log("Audio play blocked", e));
     } else {
         initAudioEngine();
@@ -1195,7 +1225,7 @@ function openRest() {
     // 2. CONFIGURAR BARRA DE PROGRESO NATIVA (EL TRUCO PARA QUE NO SE CONGELE)
     if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({
-            title: `Descanso...`, // Título estático, el tiempo lo da la barra
+            title: `Descanso...`, 
             artist: 'Fit Data Pro',
             album: 'Recuperando',
             artwork: [{ src: 'logo.png', sizes: '512x512', type: 'image/png' }]
@@ -1212,7 +1242,6 @@ function openRest() {
     if(timerInt) clearInterval(timerInt);
     
     // 3. INTERVALO DE SEGURIDAD (JS)
-    // Aunque la barra nativa se mueve sola, usamos JS para detectar el fin y actualizar la UI visual si la pantalla está encendida.
     timerInt = setInterval(() => {
         // Cálculo DELTA: Tiempo final - Tiempo actual
         const now = Date.now();
@@ -1775,6 +1804,10 @@ async function openCoachView(uid, u) {
     if(freshU.bioHistory) { document.getElementById('coach-view-bio').classList.remove('hidden'); renderBioChart('coachBioChart', freshU.bioHistory); }
     if(freshU.skinfoldHistory) { document.getElementById('coach-view-skinfolds').classList.remove('hidden'); const dataF = freshU.skinfoldHistory.map(f => f.fat || 0); const labels = freshU.skinfoldHistory.map(f => new Date(f.date.seconds*1000).toLocaleDateString()); if(coachFatChart) coachFatChart.destroy(); coachFatChart = new Chart(document.getElementById('coachFatChart'), { type: 'line', data: { labels: labels, datasets: [{ label: '% Grasa', data: dataF, borderColor: '#ffaa00' }] }, options: { maintainAspectRatio: false } }); }
     if(freshU.measureHistory) { document.getElementById('coach-view-measures').classList.remove('hidden'); renderMeasureChart('coachMeasuresChart', freshU.measureHistory); }
+    
+    // --- RENDERIZADO DEL MAPA MUSCULAR COACH (RADAR CHART) ---
+    renderMuscleRadar('coachMuscleChart', freshU.muscleStats || {});
+
     const st = freshU.stats || {}; document.getElementById('coach-stats-text').innerHTML = `<div class="stat-pill"><b>${st.workouts||0}</b><span>ENTRENOS</span></div><div class="stat-pill"><b>${(st.totalKg/1000||0).toFixed(1)}t</b><span>CARGA</span></div><div class="stat-pill"><b>${freshU.age||'N/D'}</b><span>AÑOS</span></div>`;
     if(coachChart) coachChart.destroy(); const wData = freshU.weightHistory || [70]; coachChart = new Chart(document.getElementById('coachWeightChart'), { type:'line', data: { labels:wData.map((_,i)=>i+1), datasets:[{label:'Kg', data:wData, borderColor:'#ff3333'}] }, options:{ maintainAspectRatio: false}});
     const hList = document.getElementById('coach-history-list'); hList.innerHTML = 'Cargando...';
