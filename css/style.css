@@ -393,3 +393,40 @@ input:checked + .slider { background-color: var(--accent-color); } input:checked
 }
 .trophy { opacity: 0.3; filter: grayscale(100%); transition: 0.3s; font-size: 1.5rem; }
 .trophy.unlocked { opacity: 1; filter: grayscale(0%); text-shadow: 0 0 15px currentColor; transform: scale(1.1); }
+
+/* --- RANKING AVANZADO --- */
+.rank-filter-row {
+    margin-bottom: 12px;
+}
+.filter-label {
+    font-size: 0.65rem; color: #666; font-weight: bold; margin-bottom: 4px; display: block; margin-left: 5px;
+}
+.pill-selector {
+    display: flex; background: #1a1a1a; border-radius: 8px; padding: 3px; border: 1px solid #333;
+}
+.pill {
+    flex: 1; text-align: center; padding: 8px 5px; font-size: 0.7rem; font-weight: bold;
+    color: #888; border-radius: 6px; cursor: pointer; transition: all 0.2s;
+}
+.pill.active {
+    background: #333; color: white; box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+}
+
+.scroll-pills {
+    display: flex; gap: 8px; overflow-x: auto; padding-bottom: 5px; -webkit-overflow-scrolling: touch;
+}
+.pill-cat {
+    flex-shrink: 0; padding: 8px 15px; background: #1a1a1a; border: 1px solid #333;
+    border-radius: 20px; font-size: 0.75rem; color: #ccc; cursor: pointer; white-space: nowrap;
+}
+.pill-cat.active {
+    background: var(--accent-color); color: white; border-color: var(--accent-color);
+    box-shadow: var(--accent-glow);
+}
+
+.ranking-list-container {
+    min-height: 200px;
+}
+.rank-value-highlight {
+    font-family: monospace; font-size: 1.1rem; font-weight: bold; color: var(--success-color);
+}
