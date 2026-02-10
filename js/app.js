@@ -4,7 +4,7 @@ import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, q
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 import { EXERCISES } from './data.js';
 
-console.log("⚡ FIT DATA: App Iniciada (Full Pro Mode - Advanced Ranking)...");
+console.log("⚡ FIT DATA: App Iniciada (Ultimate Pro Version)...");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDW40Lg6QvBc3zaaA58konqsH3QtDrRmyM",
@@ -38,9 +38,9 @@ let timerInt = null;
 let durationInt = null;
 let wakeLock = null;
 let totalRestTime = 60; // Para animación SVG
-let noteTargetIndex = null; // Para guardar notas de ejercicio
+let noteTargetIndex = null; // Índice del ejercicio para añadir nota
 
-// Variables de Filtro Ranking
+// Filtros de Ranking
 let rankFilterTime = 'all';    // 'all', 'month', 'year'
 let rankFilterGender = 'all';  // 'all', 'male', 'female'
 let rankFilterCat = 'kg';      // 'kg', 'workouts', 'prs', 'reps', 'sets'
@@ -98,28 +98,45 @@ window.toggleElement = (id) => {
 };
 
 // --- AUDIO ENGINE (HYBRID: HTML5 AUDIO + WEB AUDIO API) ---
+// MP3 de silencio en Base64 (0.5s aprox).
 const SILENT_MP3 = "data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjIwLjEwMAAAAAAAAAAAAAAA//oeEsAAAAAAAASwgAAAAEAAGiAAAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//oeEsAA1gAAASwgAAAAEAAGiAAAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//oeEsAA1gAAASwgAAAAEAAGiAAAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
 
 let htmlAudioElement = null;
 
 function playSilentAudio() {
+    // 1. Crear el elemento de audio físico si no existe
     if (!htmlAudioElement) {
         htmlAudioElement = new Audio(SILENT_MP3);
         htmlAudioElement.loop = true;
-        htmlAudioElement.volume = 0.05; 
+        htmlAudioElement.preload = 'auto';
+        htmlAudioElement.volume = 1.0; // iOS ignora volumen por código, pero ayuda en otros
     }
+
+    // 2. Reproducir y Registrar Handlers (CRÍTICO PARA IOS)
     htmlAudioElement.play().then(() => {
         if ('mediaSession' in navigator) {
+            // Registrar handlers obliga a iOS a mostrar los controles
+            navigator.mediaSession.setActionHandler('play', () => { 
+                htmlAudioElement.play();
+                navigator.mediaSession.playbackState = "playing"; 
+            });
+            navigator.mediaSession.setActionHandler('pause', () => { 
+                navigator.mediaSession.playbackState = "playing"; // Evitamos pausa accidental
+            });
+            // Truco: Usar botones de pistas para sumar/restar tiempo
+            navigator.mediaSession.setActionHandler('previoustrack', () => window.addRestTime(-10));
+            navigator.mediaSession.setActionHandler('nexttrack', () => window.addRestTime(10));
+
             navigator.mediaSession.metadata = new MediaMetadata({
                 title: 'Entrenamiento Activo',
                 artist: 'Fit Data Pro',
                 album: 'Toque para volver',
                 artwork: [{ src: 'logo.png', sizes: '512x512', type: 'image/png' }]
             });
-            navigator.mediaSession.playbackState = "playing";
         }
-    }).catch(e => console.log("Audio autoplay bloqueado"));
+    }).catch(e => console.log("Audio background pendiente de interacción...", e));
 
+    // 3. Inicializar contexto WebAudio (Beeps)
     if (!audioCtx) {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         audioCtx = new AudioContext();
@@ -140,9 +157,11 @@ function unlockAudio() {
     }
 }
 
+// Listeners de interacción inicial
 document.addEventListener('touchstart', unlockAudio, {once:true});
 document.addEventListener('click', unlockAudio, {once:true});
 
+// Generador de Beeps (Usa Web Audio API)
 function play5Beeps() {
     if (!audioCtx) {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -171,7 +190,7 @@ window.testSound = () => { play5Beeps(); };
 
 window.enableNotifications = () => {
     if (!("Notification" in window)) {
-        alert("Tu dispositivo no soporta notificaciones web.");
+        alert("Tu dispositivo no soporta notificaciones web. (En iPhone usa 'Añadir a Inicio')");
         return;
     }
     Notification.requestPermission().then((permission) => {
@@ -624,7 +643,7 @@ window.loadProfile = async () => {
     if(userData.photo) { document.getElementById('avatar-text').style.display='none'; document.getElementById('avatar-img').src = userData.photo; document.getElementById('avatar-img').style.display='block'; }
     updatePhotoDisplay(userData);
     
-    // --- LÓGICA DE RANKING PERSONAL EN PERFIL ---
+    // --- RANKING OPT-IN ---
     if(userData.rankingOptIn) {
         document.getElementById('cfg-ranking').checked = true;
         document.getElementById('top-btn-ranking').classList.remove('hidden');
@@ -632,7 +651,6 @@ window.loadProfile = async () => {
         document.getElementById('cfg-ranking').checked = false;
         document.getElementById('top-btn-ranking').classList.add('hidden');
     }
-    // --- FIN RANKING ---
 
     if(userData.showBio) {
         document.getElementById('user-bio-section').classList.remove('hidden');
@@ -885,7 +903,7 @@ window.saveNote = () => {
     showToast(txt ? "📝 Nota guardada" : "🗑️ Nota borrada");
 };
 
-// --- GESTIÓN DE RANKING ---
+// --- GESTIÓN DE RANKING AVANZADO ---
 window.toggleRankingOptIn = async (val) => {
     try {
         await updateDoc(doc(db, "users", currentUser.uid), { rankingOptIn: val });
@@ -899,9 +917,9 @@ window.toggleRankingOptIn = async (val) => {
 window.changeRankFilter = (type, val) => {
     if(type === 'time') {
         rankFilterTime = val;
-        document.querySelectorAll('#ranking-view .pill').forEach(el => el.classList.remove('active')); // Reset visual genérico
+        document.querySelectorAll('#ranking-view .pill').forEach(el => el.classList.remove('active')); 
         document.getElementById(`time-${val}`).classList.add('active');
-        document.getElementById(`gender-${rankFilterGender}`).classList.add('active'); // Restaurar otros
+        document.getElementById(`gender-${rankFilterGender}`).classList.add('active'); 
     }
     if(type === 'gender') {
         rankFilterGender = val;
@@ -925,16 +943,14 @@ window.loadRankingView = async () => {
 
     try {
         let orderByField = "";
-        let collectionField = ""; // Sufijo del campo (kg, workouts, reps)
+        let collectionField = ""; 
 
-        // Definir métrica base
         if (rankFilterCat === 'kg') collectionField = "kg"; 
         else if (rankFilterCat === 'workouts') collectionField = "workouts";
         else if (rankFilterCat === 'reps') collectionField = "reps";
         else if (rankFilterCat === 'sets') collectionField = "sets";
         else if (rankFilterCat === 'prs') collectionField = "prCount";
 
-        // Definir prefijo de tiempo
         if (rankFilterTime === 'all') {
             if (rankFilterCat === 'kg') orderByField = "stats.totalKg";
             else if (rankFilterCat === 'workouts') orderByField = "stats.workouts";
@@ -945,7 +961,7 @@ window.loadRankingView = async () => {
             const now = new Date();
             const timeKey = rankFilterTime === 'month' ? `month_${now.getFullYear()}_${now.getMonth()}` : `year_${now.getFullYear()}`;
             if (rankFilterCat === 'prs') {
-                list.innerHTML = "<div class='tip-box'>🏆 Los Récords solo se contabilizan en el Ranking Histórico (Siempre).</div>";
+                list.innerHTML = "<div class='tip-box'>🏆 Los Récords solo se contabilizan en el Ranking Histórico.</div>";
                 return;
             }
             orderByField = `stats_${timeKey}.${collectionField}`;
@@ -981,7 +997,6 @@ window.loadRankingView = async () => {
             const u = d.data();
             const isMe = d.id === currentUser.uid;
             
-            // Acceso seguro a campos anidados
             let rawValue = 0;
             if (rankFilterTime === 'all') {
                 const fieldName = orderByField.split('.')[1];
@@ -1175,7 +1190,7 @@ window.tS = async (i, j) => {
                 if (weight > currentWeightPR) {
                     if(!userData.prs) userData.prs = {};
                     userData.prs[exerciseName] = weight;
-                    // --- NUEVO: CONTADOR DE LOGROS ---
+                    // --- CONTADOR DE LOGROS ---
                     const newPrCount = (userData.stats.prCount || 0) + 1;
                     updateDoc(doc(db, "users", currentUser.uid), { 
                         [`prs.${exerciseName}`]: weight,
@@ -1253,24 +1268,28 @@ function openRest() {
         left--;
         updateTimerVisuals(left);
         
-        if(left > 0) {
-            updateMediaSession(`⏳ DESCANSO: ${left}s`, "Mantente enfocado");
-        } 
-        else {
+        // Actualizar Isla Dinámica cada segundo
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.metadata.title = `DESCANSO: ${left}s`;
+            if(left % 5 === 0) { 
+                 navigator.mediaSession.metadata = new MediaMetadata({
+                    title: `⏳ DESCANSO: ${left}s`,
+                    artist: 'Mantente enfocado',
+                    artwork: [{ src: 'logo.png', sizes: '512x512', type: 'image/png' }]
+                });
+            }
+        }
+        
+        if (left <= 0) {
             window.closeTimer();
             if(document.getElementById('cfg-sound') && document.getElementById('cfg-sound').checked) {
                 play5Beeps();
             }
+            if ("vibrate" in navigator) navigator.vibrate([200, 100, 200]);
+            
             if ("Notification" in window && Notification.permission === "granted") {
-                try {
-                    const notif = new Notification("¡TIEMPO! 🔔", { 
-                        body: "Descanso finalizado. ¡A por la siguiente serie!", 
-                        icon: "logo.png", tag: "rest-timer", renotify: true
-                    });
-                    setTimeout(() => notif.close(), 4000); 
-                } catch(e) { console.log("Error notif:", e); }
+                 new Notification("¡A LA SERIE!", { body: "Descanso finalizado.", icon: "logo.png" });
             }
-            if("vibrate" in navigator) navigator.vibrate([200, 100, 200]);
         }
     }, 1000);
 }
@@ -1278,11 +1297,16 @@ function openRest() {
 window.closeTimer = () => {
     clearInterval(timerInt);
     window.closeModal('modal-timer');
+    
+    // No pausamos el audio para no perder el "foco" de la Isla Dinámica.
     if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({
-            title: 'Entrenando', artist: 'Fit Data Pro',
+            title: 'Entrenando 💪',
+            artist: 'Fit Data Pro',
+            album: 'Dale duro',
             artwork: [{ src: 'logo.png', sizes: '512x512', type: 'image/png' }]
         });
+        navigator.mediaSession.playbackState = "playing";
     }
 };
 
@@ -1410,7 +1434,7 @@ window.finishWorkout = async (rpeVal) => {
                 n: e.n, 
                 s: completedSets, 
                 superset: !!e.superset,
-                note: e.note || "" // Guardar nota
+                note: e.note || "" 
             };
         }).filter(e => e.s.length > 0);
 
@@ -1663,20 +1687,16 @@ window.loadAdminUsers = async () => {
         const s = await getDocs(q); l.innerHTML = '';
         s.forEach(d => {
             const u = d.data(); 
-            // Avatar Lógica
             const avatarHtml = u.photo 
                 ? `<img src="${u.photo}" class="mini-avatar">` 
                 : `<div class="mini-avatar-placeholder">${u.name.charAt(0).toUpperCase()}</div>`;
             
-            // Clase especial si soy yo o es coach
             let rowClass = "admin-user-row";
             if(d.id === currentUser.uid) rowClass += " is-me"; 
             if(u.role === 'assistant') rowClass += " is-coach";
 
             const div = document.createElement('div'); 
             div.className = rowClass;
-            
-            // Layout Grid: Avatar | Info | Botón simple
             div.innerHTML=`
                 ${avatarHtml}
                 <div style="overflow:hidden;">
@@ -1803,6 +1823,21 @@ async function openCoachView(uid, u) {
         const date = d.date ? new Date(d.date.seconds*1000).toLocaleDateString() : '-';
         hList.innerHTML += `<div class="history-row" style="grid-template-columns: 60px 1fr 30px 80px;"><div>${date}</div><div style="overflow:hidden; text-overflow:ellipsis;">${d.routine}</div><div>${d.rpe === 'Suave' ? '🟢' : (d.rpe === 'Duro' ? '🟠' : '🔴')}</div><button class="btn-small btn-outline" onclick="viewWorkoutDetails('${d.routine}', '${encodeURIComponent(JSON.stringify(d.details))}', '${encodeURIComponent(d.note||"")}')">Ver</button></div>`;
     });
+}
+
+window.openCoachProgress = async () => {
+    if(!selectedUserCoach) return; const m = document.getElementById('modal-progress'); const s = document.getElementById('progress-select');
+    s.innerHTML = '<option>Cargando...</option>'; 
+    window.openModal('modal-progress');
+    try {
+        const snap = await getDocs(query(collection(db, "workouts"), where("uid", "==", selectedUserCoach)));
+        if (snap.empty) { s.innerHTML = '<option>Sin historial</option>'; return; }
+        const history = snap.docs.map(d => d.data()).sort((a,b) => a.date - b.date);
+        const uniqueExercises = new Set(); history.forEach(w => { if (w.details) w.details.forEach(ex => uniqueExercises.add(ex.n)); });
+        s.innerHTML = '<option value="">-- Selecciona Ejercicio --</option>';
+        Array.from(uniqueExercises).sort().forEach(exName => s.add(new Option(exName, exName)));
+        window.tempHistoryCache = history;
+    } catch (e) { s.innerHTML = '<option>Error</option>'; }
 }
 
 window.viewWorkoutDetails = (title, dataStr, noteStr) => {
