@@ -4,7 +4,7 @@ import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, q
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 import { EXERCISES } from './data.js';
 
-console.log("⚡ FIT DATA: App Iniciada (v2.0 - Cloning + Editor UX)...");
+console.log("⚡ FIT DATA: App Iniciada (v3.0 - Inline Editor UX)...");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDW40Lg6QvBc3zaaA58konqsH3QtDrRmyM",
@@ -84,6 +84,7 @@ function initCommunityListener() {
                 const workoutTime = w.date ? w.date.seconds : 0;
                 if (now - workoutTime < 60 && w.uid !== currentUser.uid) {
                     showToast(`🔥 Alguien terminó: ${w.routine}`);
+                    // Sonido sutil de notificación
                     if(document.getElementById('cfg-sound')?.checked) {
                          const osc = audioCtx?.createOscillator();
                          if(osc) {
@@ -124,14 +125,14 @@ window.toggleElement = (id) => {
     if(el) el.classList.toggle('hidden');
 };
 
-// --- AUDIO ENGINE ---
+// --- AUDIO ENGINE MEJORADO (LOCK SCREEN + COUNTDOWN) ---
 const SILENT_MP3_URL = "https://raw.githubusercontent.com/anars/blank-audio/master/1-minute-of-silence.mp3";
 let htmlAudioElement = new Audio(SILENT_MP3_URL);
 htmlAudioElement.loop = true;
 htmlAudioElement.preload = 'auto';
 htmlAudioElement.volume = 1.0; 
 
-let lastBeepSecond = -1;
+let lastBeepSecond = -1; // Control para no repetir beeps en el mismo segundo
 
 function initAudioEngine() {
     if (!audioCtx) {
@@ -173,11 +174,13 @@ function updateMediaSessionMetadata(duration, position) {
     }
 }
 
+// Función de Beep (TIC) para cuenta atrás
 function playTickSound(isFinal = false) {
     if(!audioCtx) return;
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     
+    // Agudo para cuenta atrás, Grave para final
     osc.frequency.value = isFinal ? 600 : 1000; 
     osc.type = isFinal ? 'square' : 'sine';
     
@@ -199,6 +202,7 @@ function playTickSound(isFinal = false) {
 document.body.addEventListener('touchstart', initAudioEngine, {once:true});
 document.body.addEventListener('click', initAudioEngine, {once:true});
 
+// Reemplazo de play5Beeps por el nuevo sistema
 window.testSound = () => { playTickSound(false); setTimeout(() => playTickSound(true), 500); };
 
 window.enableNotifications = () => {
@@ -359,80 +363,106 @@ window.filterExercises = (t) => {
     renderExercises(filtered); 
 };
 
+// --- CORE DEL CREADOR DE RUTINAS (MODIFICADO) ---
+// Ahora renderiza las tarjetas de edición DENTRO de la lista
 function renderExercises(l) {
     const c = document.getElementById('exercise-selector-list'); c.innerHTML = '';
     l.forEach(e => {
-        const d = document.createElement('div'); d.className = 'ex-select-item';
-        if(currentRoutineSelections.some(x => x.n === e.n)) d.classList.add('selected');
-        d.innerHTML = `<img src="${e.img}" onerror="this.src='logo.png'"><span>${e.n}</span>`;
-        d.onclick = () => { 
-            const index = currentRoutineSelections.findIndex(x => x.n === e.n);
-            if(index > -1) { currentRoutineSelections.splice(index, 1); } 
-            else { currentRoutineSelections.push({ n: e.n, s: false, series: 5, reps: "20-16-16-16-16" }); } 
-            renderExercises(l); renderSelectedSummary(); 
-        };
+        const d = document.createElement('div');
+        // Verificamos si este ejercicio ya está seleccionado
+        const selectedIndex = currentRoutineSelections.findIndex(x => x.n === e.n);
+        const isSelected = selectedIndex > -1;
+        const obj = isSelected ? currentRoutineSelections[selectedIndex] : null;
+
+        // Clase base
+        d.className = 'ex-select-item';
+        
+        if (isSelected) {
+            // --- ESTADO SELECCIONADO (ROJO CON INPUTS) ---
+            d.classList.add('selected-red-active');
+            d.style.cssText = "background: rgba(50, 10, 10, 0.95); border-left: 4px solid var(--accent-color); border: 1px solid var(--accent-color); padding: 10px; margin-bottom: 5px; border-radius: 8px; flex-direction:column; align-items: stretch;";
+            
+            const linkActiveStyle = obj.s ? "color: var(--accent-color); text-shadow: 0 0 5px var(--accent-color);" : "color:rgba(255,255,255,0.2);";
+
+            d.innerHTML = `
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <img src="${e.img}" onerror="this.src='logo.png'" style="width:40px; height:40px; border-radius:4px; object-fit:cover;">
+                        <span style="font-weight:bold; color:white;">${e.n}</span>
+                    </div>
+                    <b class="btn-remove-ex" onclick="event.stopPropagation(); removeSelection('${obj.n}')" style="cursor:pointer; color:#ff5555; font-size:1.2rem; padding:5px;">✕</b>
+                </div>
+                
+                <div class="summary-inputs" style="display:flex; gap:8px; align-items:center; width:100%;">
+                    <input type="number" value="${obj.series || 5}" 
+                           oninput="window.updateSelectionData(${selectedIndex}, 'series', this.value)" 
+                           onclick="event.stopPropagation()"
+                           placeholder="Ser" 
+                           style="width:60px; text-align:center; padding:8px; background:#000; border:1px solid #444; color:white; border-radius:4px;">
+                    <span style="color:#aaa;">x</span>
+                    <input type="text" value="${obj.reps || '20-16-16-16-16'}" 
+                           onclick="event.stopPropagation()"
+                           style="flex:1; padding:8px; background:#000; border:1px solid #444; color:white; border-radius:4px;" 
+                           oninput="window.updateSelectionData(${selectedIndex}, 'reps', this.value)" 
+                           placeholder="Reps">
+                    <span style="font-size:1.8rem; cursor:pointer; margin-left:5px; ${linkActiveStyle}" 
+                          onclick="event.stopPropagation(); toggleSuperset(${selectedIndex})" 
+                          title="Superserie">🔗</span>
+                </div>
+            `;
+            // Quitamos el onclick global del div para que no interfiera con los inputs
+            d.onclick = null; 
+
+        } else {
+            // --- ESTADO NO SELECCIONADO (NORMAL) ---
+            d.innerHTML = `<img src="${e.img}" onerror="this.src='logo.png'"><span>${e.n}</span>`;
+            d.onclick = () => { 
+                currentRoutineSelections.push({ n: e.n, s: false, series: 5, reps: "20-16-16-16-16" });
+                renderExercises(l); 
+                renderSelectedSummary(); // Actualiza la leyenda superior
+            };
+        }
+        
         c.appendChild(d);
     });
 }
 
-// --- ACTUALIZACIÓN UX: LEYENDA SUPERIOR + TARJETAS DE EDICIÓN ---
+// Actualiza solo la LEYENDA SUPERIOR (sin tapar la pantalla)
 window.renderSelectedSummary = () => {
     const div = document.getElementById('selected-summary'); 
-    div.innerHTML = '';
-    window.currentRoutineSelections = currentRoutineSelections;
-
-    // 1. GENERAR LEYENDA SUPERIOR (Visual simple del orden)
+    div.innerHTML = ''; // Limpiamos contenedor (ya no hay tarjetas grandes aquí)
+    
+    // Generar Leyenda Superior "One-Line"
     if(currentRoutineSelections.length > 0) {
         const legendDiv = document.createElement('div');
         legendDiv.className = 'editor-legend';
-        legendDiv.style.cssText = "display:flex; gap:8px; overflow-x:auto; padding:10px; background:#111; margin-bottom:10px; white-space:nowrap; border-bottom:1px solid #333; align-items:center;";
+        legendDiv.style.cssText = "display:flex; gap:8px; overflow-x:auto; padding:12px; background:#111; margin-bottom:15px; white-space:nowrap; border-bottom:1px solid #333; align-items:center; border-radius: 8px; position:sticky; top:0; z-index:10;";
         
-        let legendHTML = '<span style="font-size:0.7rem; color:#666; font-weight:bold;">ORDEN:</span>';
+        let legendHTML = '<span style="font-size:0.7rem; color:#888; font-weight:bold; margin-right:5px;">ORDEN:</span>';
         currentRoutineSelections.forEach((obj, idx) => {
             const isLast = idx === currentRoutineSelections.length - 1;
-            const linkSymbol = obj.s ? '<span style="color:var(--accent-color)">🔗</span>' : '';
+            const linkSymbol = obj.s ? '<span style="color:var(--accent-color); font-weight:bold;">🔗</span>' : '';
             const separator = (isLast && !obj.s) ? '' : '<span style="color:#444">›</span>';
-            legendHTML += `<span style="font-size:0.8rem; color:#ccc;">${obj.n} ${linkSymbol}</span> ${separator}`;
+            legendHTML += `<span style="font-size:0.85rem; color:#fff;">${idx+1}. ${obj.n} ${linkSymbol}</span> ${separator}`;
         });
         legendDiv.innerHTML = legendHTML;
         div.appendChild(legendDiv);
     }
-
-    // 2. GENERAR TARJETAS DETALLADAS (Rojas/Destacadas)
-    currentRoutineSelections.forEach((obj, idx) => { 
-        const pill = document.createElement('div'); 
-        pill.className = 'summary-item-card'; 
-        // Estilo "rojo" o destacado para indicar selección activa
-        pill.style.cssText = "background: rgba(50, 20, 20, 0.9); border: 1px solid var(--accent-color); padding: 10px; margin-bottom: 8px; border-radius: 8px;";
-
-        const linkActiveStyle = obj.s ? "color: var(--accent-color); text-shadow: 0 0 5px var(--accent-color);" : "color:rgba(255,255,255,0.2);";
-        
-        pill.innerHTML = `
-            <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
-                <span class="summary-item-name" style="font-weight:bold; color:white;">${idx+1}. ${obj.n}</span>
-                <b class="btn-remove-ex" onclick="removeSelection('${obj.n}')" style="cursor:pointer; color:#ff5555;">✕</b>
-            </div>
-            <div class="summary-inputs" style="display:flex; gap:5px; align-items:center;">
-                <input type="number" value="${obj.series || 5}" oninput="window.updateSelectionData(${idx}, 'series', this.value)" placeholder="Ser" style="width:50px; text-align:center; padding:5px;">
-                <span style="color:#aaa;">x</span>
-                <input type="text" value="${obj.reps || '20-16-16-16-16'}" style="flex:1; padding:5px;" oninput="window.updateSelectionData(${idx}, 'reps', this.value)" placeholder="Reps (ej: 12-10-8)">
-                <span style="font-size:1.5rem; cursor:pointer; margin-left:5px; ${linkActiveStyle}" onclick="toggleSuperset(${idx})" title="Unir en Superserie">🔗</span>
-            </div>`; 
-        div.appendChild(pill); 
-    });
 };
 
-// Función auxiliar para actualizar datos sin perder foco
 window.updateSelectionData = (idx, field, val) => {
     if(currentRoutineSelections[idx]) {
         currentRoutineSelections[idx][field] = field === 'series' ? (parseInt(val)||0) : val;
+        // No llamamos a renderExercises aquí para no perder el foco del input mientras escribes
     }
 };
 
 window.toggleSuperset = (idx) => {
     if (idx < currentRoutineSelections.length - 1) { 
         currentRoutineSelections[idx].s = !currentRoutineSelections[idx].s; 
-        renderSelectedSummary(); 
+        // Aquí si necesitamos redibujar para actualizar el icono rojo/gris
+        renderExercises(EXERCISES); // Ojo: si hay filtro activo deberíamos usar filtered, pero por simplicidad refrescamos todo o usamos variable global
+        renderSelectedSummary();
     } else {
         alert("No puedes hacer superserie con el último ejercicio.");
     }
@@ -441,6 +471,7 @@ window.toggleSuperset = (idx) => {
 window.removeSelection = (name) => { 
     currentRoutineSelections = currentRoutineSelections.filter(x => x.n !== name); 
     renderSelectedSummary(); 
+    // Mantiene el filtro de búsqueda actual al redibujar
     window.filterExercises(document.getElementById('ex-search').value); 
 }
 
@@ -456,9 +487,9 @@ window.saveRoutine = async () => {
     } catch(e) { alert("Error: " + e.message); } finally { btn.innerText = "GUARDAR"; }
 };
 
-// --- NUEVA FUNCIÓN: CLONAR RUTINA ---
+// --- NUEVA FUNCIÓN: CLONAR RUTINA (🖨) ---
 window.cloneRoutine = async (id) => {
-    if(!confirm("¿Deseas clonar esta rutina?")) return;
+    if(!confirm("¿Deseas clonar esta rutina para editarla?")) return;
     try {
         const docRef = doc(db, "routines", id);
         const docSnap = await getDoc(docRef);
@@ -468,20 +499,19 @@ window.cloneRoutine = async (id) => {
         const originalData = docSnap.data();
         const newName = prompt("Nombre para la copia:", `${originalData.name} (Copia)`);
         
-        if (!newName) return; // Cancelado por usuario
+        if (!newName) return; 
 
-        // Crear objeto limpio para la copia
         const copyData = {
             ...originalData,
             name: newName,
-            uid: currentUser.uid, // Asignar al usuario actual (por si un admin clona de otro)
+            uid: currentUser.uid, 
             createdAt: serverTimestamp(),
-            assignedTo: [] // Resetear asignaciones para evitar spam
+            assignedTo: [] // Resetear usuarios asignados
         };
 
         await addDoc(collection(db, "routines"), copyData);
-        alert(`✅ Rutina "${newName}" creada correctamente.`);
-        window.loadAdminLibrary(); // Refrescar lista
+        alert(`✅ Rutina "${newName}" creada. Ahora puedes editarla.`);
+        window.loadAdminLibrary(); 
 
     } catch (e) {
         console.error("Error cloning:", e);
@@ -962,6 +992,7 @@ window.loadAdminUsers = async () => {
     } catch (e) { l.innerHTML = 'Error de permisos o conexión.'; console.log(e); }
 };
 
+// --- LIBRERÍA (CLONAR + EDITAR) ---
 window.loadAdminLibrary = async () => {
     const l = document.getElementById('admin-lib-list'); 
     l.innerHTML = '↻ Cargando...';
