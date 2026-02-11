@@ -4,7 +4,7 @@ import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, q
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 import { EXERCISES } from './data.js';
 
-console.log("⚡ FIT DATA: App Iniciada (v5.2 - UI Fix Telegram Centrado)...");
+console.log("⚡ FIT DATA: App Iniciada (v6.0 - Smart Alerts & Marketing)...");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDW40Lg6QvBc3zaaA58konqsH3QtDrRmyM",
@@ -40,6 +40,7 @@ let totalRestTime = 60;
 let restEndTime = 0; 
 let noteTargetIndex = null;
 let communityUnsubscribe = null; 
+let announcementsUnsubscribe = null;
 
 // Filtros Ranking
 let rankFilterTime = 'all';     
@@ -62,70 +63,102 @@ let swapTargetIndex = null;
 // Variables de Asignación Masiva
 let selectedPlanForMassAssign = null; 
 let selectedRoutineForMassAssign = null;
-let assignMode = 'plan'; // 'plan' o 'routine'
+let selectedAnnouncementForAssign = null; // Nuevo para Avisos
+let assignMode = 'plan'; // 'plan', 'routine', 'announcement'
 
-// --- FUNCIONES DE INYECCIÓN UI (CORREGIDO: CENTRADO Y COMPACTO) ---
-function injectTelegramUI() {
-    // 1. Inyectar en Registro (Sin cambios, funciona bien apilado)
+// --- INYECCIÓN UI & ESTILOS EXTRA ---
+function injectAppUI() {
+    // 1. Estilos para el Modal de Anuncios y Botón Telegram
+    const style = document.createElement('style');
+    style.textContent = `
+        /* Modal de Anuncios */
+        .announcement-modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); z-index: 10000;
+            display: flex; align-items: center; justify-content: center;
+            opacity: 0; pointer-events: none; transition: opacity 0.3s;
+            backdrop-filter: blur(5px);
+        }
+        .announcement-modal.active { opacity: 1; pointer-events: auto; }
+        .announcement-content {
+            background: #1a1a1a; width: 90%; max-width: 400px;
+            border-radius: 16px; padding: 20px; text-align: center;
+            position: relative; border: 1px solid var(--accent-color);
+            box-shadow: 0 0 30px rgba(0,0,0,0.8);
+            max-height: 90vh; overflow-y: auto;
+        }
+        .announcement-close {
+            position: absolute; top: 10px; right: 15px;
+            background: none; border: none; color: #fff;
+            font-size: 1.5rem; cursor: pointer; z-index: 2;
+        }
+        .announcement-img {
+            width: 100%; border-radius: 8px; margin-top: 15px;
+            max-height: 300px; object-fit: contain; background: #000;
+        }
+        .announcement-btn {
+            background: var(--accent-color); color: #000;
+            padding: 12px 24px; border-radius: 50px; text-decoration: none;
+            font-weight: bold; display: inline-block; margin-top: 20px;
+            width: 100%; box-sizing: border-box;
+        }
+        
+        /* Botón Telegram en Perfil */
+        .telegram-btn-profile {
+            background: var(--accent-color); color: #000; border: none;
+            padding: 10px 24px; border-radius: 50px; font-weight: bold;
+            font-size: 0.9rem; cursor: pointer; display: inline-flex;
+            align-items: center; justify-content: center; gap: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4); transition: transform 0.1s;
+        }
+        .telegram-btn-profile:active { transform: scale(0.95); }
+    `;
+    document.head.appendChild(style);
+
+    // 2. Inyectar HTML del Modal de Anuncios
+    const modalHTML = `
+        <div id="modal-announcement" class="announcement-modal">
+            <div class="announcement-content">
+                <button class="announcement-close" onclick="closeAnnouncement()">✕</button>
+                <h2 id="ann-title" style="color:var(--accent-color); margin-bottom:10px;">Aviso</h2>
+                <div id="ann-text" style="color:#ddd; line-height:1.5;"></div>
+                <img id="ann-img" class="announcement-img" style="display:none;">
+                <a id="ann-link" class="announcement-btn" href="#" target="_blank" style="display:none;">VER MÁS</a>
+            </div>
+        </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+    // 3. Inyectar Campo Telegram en Registro
     const regForm = document.getElementById('register-form');
     const regEmail = document.getElementById('reg-email');
     if (regForm && regEmail && !document.getElementById('reg-telegram')) {
         const input = document.createElement('input');
-        input.type = 'text';
-        input.id = 'reg-telegram';
-        input.placeholder = 'Usuario Telegram (ej: @juanperez)';
+        input.type = 'text'; input.id = 'reg-telegram'; input.placeholder = 'Usuario Telegram (ej: @juanperez)';
         input.style.marginBottom = '10px';
         regEmail.parentNode.insertBefore(input, regEmail);
     }
 
-    // 2. Inyectar en Perfil (Configuración) - VERSIÓN CORREGIDA
+    // 4. Inyectar en Perfil
     const restInput = document.getElementById('cfg-rest-time');
     if (restInput && !document.getElementById('cfg-telegram')) {
         const wrapper = document.createElement('div');
-        // Estilos para separar de la fila anterior y centrar contenido
         wrapper.style.cssText = "width: 100%; margin-top: 25px; margin-bottom: 25px; text-align: center; border-top: 1px solid #222; padding-top: 15px;"; 
-        
         wrapper.innerHTML = `
             <label style="display:block; margin-bottom:8px; font-size:0.85rem; color:#aaa; font-weight:bold;">📸 Tu Usuario Telegram</label>
-            
-            <input type="text" id="cfg-telegram" placeholder="@usuario" 
-                style="width: 70%; max-width: 250px; margin: 0 auto 15px auto; background: #111; border: 1px solid #444; color: white; padding: 10px; border-radius: 8px; text-align: center; display:block;">
-            
-            <button onclick="window.contactCoach()" 
-                style="
-                    background: var(--accent-color); 
-                    color: #000; 
-                    border: none; 
-                    padding: 10px 24px; 
-                    border-radius: 50px; 
-                    font-weight: bold; 
-                    font-size: 0.9rem; 
-                    cursor: pointer; 
-                    display: inline-flex; 
-                    align-items: center; 
-                    justify-content: center;
-                    gap: 8px;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-                    transition: transform 0.1s;
-                "
-                onmousedown="this.style.transform='scale(0.95)'"
-                onmouseup="this.style.transform='scale(1)'">
+            <input type="text" id="cfg-telegram" placeholder="@usuario" style="width: 70%; max-width: 250px; margin: 0 auto 15px auto; background: #111; border: 1px solid #444; color: white; padding: 10px; border-radius: 8px; text-align: center; display:block;">
+            <button onclick="window.contactCoach()" class="telegram-btn-profile">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 11.944 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
                 Contactar Coach
             </button>
         `;
-        
-        // TRUCO CLAVE: Insertar después del PADRE del input de descanso (la fila entera), no al lado.
-        // Esto fuerza una nueva línea limpia.
-        const parentContainer = restInput.parentElement; 
-        if (parentContainer) {
-            parentContainer.insertAdjacentElement('afterend', wrapper);
-        }
+        const parent = restInput.parentElement; 
+        if (parent) parent.insertAdjacentElement('afterend', wrapper);
     }
 }
 
-document.addEventListener('DOMContentLoaded', injectTelegramUI);
-setTimeout(injectTelegramUI, 1000); 
+document.addEventListener('DOMContentLoaded', injectAppUI);
+setTimeout(injectAppUI, 1000); 
 
 // --- UTILIDADES ---
 function getWeekNumber(d) {
@@ -161,6 +194,53 @@ function initCommunityListener() {
         });
     });
 }
+
+// --- GESTIÓN DE AVISOS (CLIENTE) ---
+function initAnnouncementsListener() {
+    if(announcementsUnsubscribe) announcementsUnsubscribe();
+    // Escuchar avisos asignados a mí y que estén activos
+    const q = query(collection(db, "announcements"), where("assignedTo", "array-contains", currentUser.uid), where("active", "==", true));
+    
+    announcementsUnsubscribe = onSnapshot(q, (snapshot) => {
+        snapshot.forEach(doc => {
+            const ann = doc.data();
+            const annId = doc.id;
+            // Verificar si el usuario ya lo cerró (guardado en localStorage)
+            const isDismissed = localStorage.getItem(`announcement_dismissed_${annId}`);
+            
+            if (!isDismissed) {
+                showAnnouncementModal(ann, annId);
+            }
+        });
+    });
+}
+
+window.showAnnouncementModal = (ann, id) => {
+    // Si ya hay uno abierto, no solapar (opcional, por simplicidad reemplazamos)
+    document.getElementById('ann-title').innerText = ann.title;
+    document.getElementById('ann-text').innerHTML = ann.content.replace(/\n/g, '<br>');
+    
+    const imgEl = document.getElementById('ann-img');
+    if (ann.imageUrl) { imgEl.src = ann.imageUrl; imgEl.style.display = 'block'; } 
+    else { imgEl.style.display = 'none'; }
+
+    const linkEl = document.getElementById('ann-link');
+    if (ann.link) { linkEl.href = ann.link; linkEl.style.display = 'inline-block'; linkEl.innerText = ann.linkText || "VER AHORA"; }
+    else { linkEl.style.display = 'none'; }
+
+    // Guardar ID en el botón de cierre para saber qué bloquear
+    document.querySelector('.announcement-close').onclick = () => window.closeAnnouncement(id);
+    
+    document.getElementById('modal-announcement').classList.add('active');
+};
+
+window.closeAnnouncement = (id) => {
+    document.getElementById('modal-announcement').classList.remove('active');
+    if(id) {
+        // Marcar como visto para que no salga más en este dispositivo
+        localStorage.setItem(`announcement_dismissed_${id}`, 'true');
+    }
+};
 
 let scrollPos = 0;
 window.openModal = (id) => {
@@ -284,7 +364,10 @@ onAuthStateChanged(auth, async (user) => {
             checkPhotoVisualReminder();
             initCommunityListener();
             checkPhotoReminder();
-            injectTelegramUI();
+            injectAppUI();
+            
+            // Iniciar escucha de avisos personalizados
+            initAnnouncementsListener();
             
             if(userData.role === 'admin' || userData.role === 'assistant') {
                 document.getElementById('top-btn-coach').classList.remove('hidden');
@@ -311,7 +394,8 @@ onAuthStateChanged(auth, async (user) => {
         switchTab('auth-view');
         document.getElementById('main-header').classList.add('hidden');
         if(communityUnsubscribe) communityUnsubscribe();
-        injectTelegramUI();
+        if(announcementsUnsubscribe) announcementsUnsubscribe();
+        injectAppUI();
     }
 });
 
@@ -393,7 +477,6 @@ async function loadRoutines() {
         s.forEach(d=>{
             const r = d.data();
             const isAssignedToMe = r.assignedTo && r.assignedTo.includes(currentUser.uid);
-            
             if(isAssignedToMe){
                 const div = document.createElement('div'); div.className = 'card';
                 const canEdit = r.uid === currentUser.uid;
@@ -545,8 +628,6 @@ window.saveRoutine = async () => {
     
     const btn = document.getElementById('btn-save-routine'); btn.innerText = "💾 GUARDANDO...";
     
-    // Si soy Admin, NO me la asigno (se queda en librería general).
-    // Si soy Atleta, me la asigno a mí mismo para verla.
     let initialAssignments = [];
     if (userData.role !== 'admin') {
         initialAssignments.push(currentUser.uid);
@@ -572,7 +653,7 @@ window.saveRoutine = async () => {
 };
 
 window.cloneRoutine = async (id) => {
-    if(!confirm("¿Deseas clonar esta rutina para editarla?")) return;
+    if(!confirm("¿Deseas clonar esta rutina?")) return;
     try {
         const docRef = doc(db, "routines", id);
         const docSnap = await getDoc(docRef);
@@ -587,7 +668,7 @@ window.cloneRoutine = async (id) => {
             name: newName,
             uid: currentUser.uid, 
             createdAt: serverTimestamp(),
-            assignedTo: [] // Resetear asignaciones
+            assignedTo: [] 
         };
 
         await addDoc(collection(db, "routines"), copyData);
@@ -1048,8 +1129,134 @@ window.openProgress = async () => { const m = document.getElementById('modal-pro
 
 window.renderProgressChart = (exName) => { if (!exName || !window.tempHistoryCache) return; const ctx = document.getElementById('progressChart'); if (progressChart) progressChart.destroy(); const labels = []; const volumenData = []; const prData = []; const rmData = []; window.tempHistoryCache.forEach(w => { const exerciseData = w.details.find(d => d.n === exName); if (exerciseData) { let totalVolumenSesion = 0; let maxPesoSesion = 0; let bestRM = 0; exerciseData.s.forEach(set => { const weight = parseFloat(set.w) || 0; const reps = parseInt(set.r) || 0; totalVolumenSesion += (weight * reps); if (weight > maxPesoSesion) maxPesoSesion = weight; if (reps > 0 && weight > 0) { const currentRM = weight / (1.0278 - (0.0278 * reps)); if (currentRM > bestRM) bestRM = currentRM; } }); if (totalVolumenSesion > 0) { const dateObj = new Date(w.date.seconds * 1000); labels.push(dateObj.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })); volumenData.push(totalVolumenSesion); prData.push(maxPesoSesion); rmData.push(Math.round(bestRM)); } } }); progressChart = new Chart(ctx, { type: 'line', data: { labels: labels, datasets: [ { label: 'Volumen Total (Kg)', data: volumenData, borderColor: '#00ff88', backgroundColor: 'rgba(0, 255, 136, 0.1)', yAxisID: 'y', tension: 0.4, fill: true, pointRadius: 3 }, { label: '1RM Est. (Fuerza Real)', data: rmData, borderColor: '#ffaa00', yAxisID: 'y1', tension: 0.3, pointRadius: 4, borderWidth: 3 }, { label: 'PR Máximo (Kg)', data: prData, borderColor: '#ff3333', borderDash: [5, 5], yAxisID: 'y1', tension: 0.3, fill: false, pointRadius: 2 } ] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { type: 'linear', display: true, position: 'left', title: { display: true, text: 'Volumen (Kg)', color: '#00ff88' }, ticks: { color: '#888' }, grid: { color: '#333' } }, y1: { type: 'linear', display: true, position: 'right', title: { display: true, text: 'Fuerza / RM (Kg)', color: '#ffaa00' }, ticks: { color: '#888' }, grid: { drawOnChartArea: false } }, x: { ticks: { color: '#888' }, grid: { display: false } } }, plugins: { legend: { position: 'top', labels: { color: 'white', padding: 15, font: { size: 10 } } } } } }); };
 
-// --- ADMIN (USERS, LIB, PLANS) ---
-window.toggleAdminMode = (mode) => { document.getElementById('tab-users').classList.toggle('active', mode==='users'); document.getElementById('tab-lib').classList.toggle('active', mode==='lib'); document.getElementById('tab-plans').classList.toggle('active', mode==='plans'); document.getElementById('admin-users-card').classList.toggle('hidden', mode!=='users'); document.getElementById('admin-lib-card').classList.toggle('hidden', mode!=='lib'); document.getElementById('admin-plans-card').classList.toggle('hidden', mode!=='plans'); if(mode==='users') window.loadAdminUsers(); if(mode==='lib') window.loadAdminLibrary(); if(mode==='plans') window.loadAdminPlans(); };
+// --- ADMIN (USERS, LIB, PLANS, ANNOUNCEMENTS) ---
+window.toggleAdminMode = (mode) => { 
+    document.getElementById('tab-users').classList.toggle('active', mode==='users'); 
+    document.getElementById('tab-lib').classList.toggle('active', mode==='lib'); 
+    document.getElementById('tab-plans').classList.toggle('active', mode==='plans'); 
+    // Nuevo tab de Avisos
+    const tabAnn = document.getElementById('tab-announcements');
+    if(tabAnn) tabAnn.classList.toggle('active', mode==='announcements');
+
+    document.getElementById('admin-users-card').classList.toggle('hidden', mode!=='users'); 
+    document.getElementById('admin-lib-card').classList.toggle('hidden', mode!=='lib'); 
+    document.getElementById('admin-plans-card').classList.toggle('hidden', mode!=='plans'); 
+    
+    // Inyectar/Mostrar panel de avisos
+    let annCard = document.getElementById('admin-announcements-card');
+    if(!annCard) {
+        annCard = document.createElement('div');
+        annCard.id = 'admin-announcements-card';
+        annCard.className = 'card hidden';
+        annCard.innerHTML = `
+            <h3>📢 Gestor de Avisos</h3>
+            <div style="margin-bottom:15px; border-bottom:1px solid #333; padding-bottom:15px;">
+                <input type="text" id="new-ann-title" placeholder="Título (ej: ¡Nueva Reseña!)" style="width:100%; margin-bottom:5px;">
+                <textarea id="new-ann-content" placeholder="Mensaje para el atleta..." style="width:100%; height:60px; margin-bottom:5px; background:#111; color:white; border:1px solid #333;"></textarea>
+                <input type="text" id="new-ann-img" placeholder="URL Imagen/QR (Opcional)" style="width:100%; margin-bottom:5px;">
+                <div style="display:flex; gap:5px;">
+                    <input type="text" id="new-ann-link" placeholder="URL Botón (Opcional)" style="flex:1;">
+                    <input type="text" id="new-ann-link-text" placeholder="Texto Botón" style="width:100px;">
+                </div>
+                <button class="btn" onclick="window.createAnnouncement()" style="width:100%; margin-top:10px;">CREAR AVISO</button>
+            </div>
+            <div id="admin-announcements-list">Cargando...</div>
+        `;
+        document.getElementById('admin-plans-card').parentNode.appendChild(annCard);
+        
+        // Crear pestaña si no existe en el HTML original
+        const nav = document.querySelector('.admin-nav');
+        if(nav && !document.getElementById('tab-announcements')) {
+            const btn = document.createElement('button');
+            btn.id = 'tab-announcements';
+            btn.className = 'tab-btn';
+            btn.innerText = 'AVISOS';
+            btn.onclick = () => window.toggleAdminMode('announcements');
+            nav.appendChild(btn);
+        }
+    }
+    annCard.classList.toggle('hidden', mode!=='announcements');
+
+    if(mode==='users') window.loadAdminUsers(); 
+    if(mode==='lib') window.loadAdminLibrary(); 
+    if(mode==='plans') window.loadAdminPlans();
+    if(mode==='announcements') window.loadAdminAnnouncements();
+};
+
+window.loadAdminAnnouncements = async () => {
+    const l = document.getElementById('admin-announcements-list');
+    l.innerHTML = 'Cargando...';
+    try {
+        const snap = await getDocs(collection(db, "announcements"));
+        l.innerHTML = '';
+        snap.forEach(d => {
+            const a = d.data();
+            const div = document.createElement('div');
+            div.className = 'assigned-routine-item';
+            const statusColor = a.active ? 'var(--accent-color)' : '#666';
+            const assignedCount = a.assignedTo ? a.assignedTo.length : 0;
+            
+            div.innerHTML = `
+                <div style="flex:1;">
+                    <b style="color:${statusColor}">${a.title}</b>
+                    <div style="font-size:0.75rem; color:#aaa;">${a.content.substring(0,30)}...</div>
+                    <small>Asignado a: ${assignedCount} atletas</small>
+                </div>
+                <div style="display:flex; gap:5px; flex-direction:column;">
+                    <button class="btn-small" style="font-size:0.7rem; padding:4px;" onclick="window.openAssignAnnouncementModal('${d.id}')">👥 ASIGNAR</button>
+                    <div style="display:flex; gap:5px;">
+                        <button class="btn-small btn-outline" style="border-color:${statusColor}; color:${statusColor};" onclick="window.toggleAnnouncement('${d.id}', ${!a.active})">${a.active ? 'ON' : 'OFF'}</button>
+                        <button class="btn-small btn-danger" onclick="window.deleteAnnouncement('${d.id}')">🗑️</button>
+                    </div>
+                </div>
+            `;
+            l.appendChild(div);
+        });
+        if(l.innerHTML === '') l.innerHTML = '<div style="text-align:center; padding:20px; color:#666;">No hay avisos creados.</div>';
+    } catch(e) { console.error(e); l.innerHTML = 'Error'; }
+};
+
+window.createAnnouncement = async () => {
+    const title = document.getElementById('new-ann-title').value;
+    const content = document.getElementById('new-ann-content').value;
+    const img = document.getElementById('new-ann-img').value;
+    const link = document.getElementById('new-ann-link').value;
+    const linkText = document.getElementById('new-ann-link-text').value;
+    
+    if(!title || !content) return alert("Título y Mensaje obligatorios");
+    
+    try {
+        await addDoc(collection(db, "announcements"), {
+            title, content, imageUrl: img, link, linkText,
+            active: false, // Empieza desactivado para configurar primero
+            createdAt: serverTimestamp(),
+            assignedTo: []
+        });
+        alert("Aviso creado. Ahora asigna usuarios y actívalo.");
+        document.getElementById('new-ann-title').value = '';
+        document.getElementById('new-ann-content').value = '';
+        window.loadAdminAnnouncements();
+    } catch(e) { alert("Error: " + e.message); }
+};
+
+window.toggleAnnouncement = async (id, state) => {
+    await updateDoc(doc(db, "announcements", id), { active: state });
+    window.loadAdminAnnouncements();
+};
+
+window.deleteAnnouncement = async (id) => {
+    if(confirm("¿Borrar aviso?")) {
+        await deleteDoc(doc(db, "announcements", id));
+        window.loadAdminAnnouncements();
+    }
+};
+
+window.openAssignAnnouncementModal = async (id) => {
+    assignMode = 'announcement';
+    selectedAnnouncementForAssign = id;
+    window.openAssignPlanModal(null); // Reutilizamos el modal de asignación
+    document.getElementById('assign-plan-title').innerText = "Asignar Aviso a:";
+};
 
 window.loadAdminUsers = async () => {
     const l = document.getElementById('admin-list'); l.innerHTML = '↻ Cargando...';
@@ -1188,13 +1395,27 @@ window.createPlan = async () => {
 window.deletePlan = async (id) => { if(confirm("¿Borrar plan?")) { await deleteDoc(doc(db, "plans", id)); window.loadAdminPlans(); } };
 
 window.openAssignPlanModal = async (planId) => {
-    assignMode = 'plan';
-    selectedPlanForMassAssign = planId; const list = document.getElementById('assign-users-list');
+    // Si NO es anuncio, establecemos modo plan (si no se ha establecido ya en openAssignAnnouncementModal)
+    if (assignMode !== 'announcement') assignMode = 'plan';
+    if (assignMode === 'plan') selectedPlanForMassAssign = planId;
+    
+    const list = document.getElementById('assign-users-list');
     window.openModal('modal-assign-plan');
     try {
-        const snap = await getDoc(doc(db, "plans", planId)); if (snap.exists()) document.getElementById('assign-plan-title').innerText = `Asignar "${snap.data().name}" a:`;
+        if (assignMode === 'plan') {
+            const snap = await getDoc(doc(db, "plans", planId)); 
+            if (snap.exists()) document.getElementById('assign-plan-title').innerText = `Asignar "${snap.data().name}" a:`;
+        }
+        
         let q = userData.role === 'assistant' ? query(collection(db, "users"), where("assignedCoach", "==", currentUser.uid)) : collection(db, "users");
         const uSnap = await getDocs(q); list.innerHTML = '';
+        
+        // Agregar opción "TODOS"
+        const allDiv = document.createElement('div'); allDiv.className = "selector-item";
+        allDiv.style.background = "#222"; allDiv.style.borderBottom = "1px solid #444";
+        allDiv.innerHTML = `<input type="checkbox" id="select-all-users" onchange="document.querySelectorAll('.user-mass-check').forEach(c => c.checked = this.checked)"><label for="select-all-users" class="selector-label" style="font-weight:bold;">SELECCIONAR TODOS</label>`;
+        list.appendChild(allDiv);
+
         uSnap.forEach(d => {
             const u = d.data(); if (u.role === 'athlete') {
                 const div = document.createElement('div'); div.className = "selector-item";
@@ -1221,10 +1442,14 @@ window.distributePlan = async () => {
         } else if (assignMode === 'routine' && selectedRoutineForMassAssign) {
             await updateDoc(doc(db, "routines", selectedRoutineForMassAssign), { assignedTo: arrayUnion(...userIds) });
             alert(`✅ Rutina enviada correctamente.`);
+        } else if (assignMode === 'announcement' && selectedAnnouncementForAssign) {
+            await updateDoc(doc(db, "announcements", selectedAnnouncementForAssign), { assignedTo: arrayUnion(...userIds) });
+            alert(`📢 Aviso enviado a ${userIds.length} atletas.`);
+            window.loadAdminAnnouncements();
         }
         window.closeModal('modal-assign-plan');
     } catch(e) { alert("Error: " + e.message); } 
-    finally { btn.innerText = "✅ ENVIAR A SELECCIONADOS"; }
+    finally { btn.innerText = "✅ ENVIAR A SELECCIONADOS"; assignMode = 'plan'; }
 };
 
 window.viewRoutineContent = (name, dataStr) => {
