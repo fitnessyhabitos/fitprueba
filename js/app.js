@@ -4,7 +4,7 @@ import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, q
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 import { EXERCISES } from './data.js';
 
-console.log("⚡ FIT DATA: App Iniciada (v3.0 - Inline Editor UX)...");
+console.log("⚡ FIT DATA: App Iniciada (v4.0 - AutoSort + Clean Admin Library)...");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDW40Lg6QvBc3zaaA58konqsH3QtDrRmyM",
@@ -331,11 +331,16 @@ async function loadRoutines() {
         l.innerHTML = '';
         s.forEach(d=>{
             const r = d.data();
-            const isMine = r.uid === currentUser.uid;
+            // LÓGICA MODIFICADA: Ahora solo miramos asignaciones directas.
+            // Si eres Admin y creas rutina, NO sale aquí a menos que te la asignes.
             const isAssignedToMe = r.assignedTo && r.assignedTo.includes(currentUser.uid);
-            if(isMine || isAssignedToMe){
+            
+            if(isAssignedToMe){
                 const div = document.createElement('div'); div.className = 'card';
-                div.innerHTML = `<div style="display:flex; justify-content:space-between;"><h3 style="color:${isMine?'white':'var(--accent-color)'}">${r.name}</h3><div>${isMine ? `<button style="background:none;border:none;margin-right:10px;" onclick="openEditor('${d.id}')">✏️</button><button style="background:none;border:none;" onclick="delRoutine('${d.id}')">🗑️</button>` : '🔒'}</div></div><p style="color:#666; font-size:0.8rem; margin:10px 0;">${r.exercises.length} Ejercicios</p><button class="btn" onclick="startWorkout('${d.id}')">ENTRENAR</button>`;
+                // Solo si soy el creador puedo editar directamente, sino candado (salvo que sea admin)
+                const canEdit = r.uid === currentUser.uid;
+                
+                div.innerHTML = `<div style="display:flex; justify-content:space-between;"><h3 style="color:var(--accent-color)">${r.name}</h3><div>${canEdit ? `<button style="background:none;border:none;margin-right:10px;" onclick="openEditor('${d.id}')">✏️</button><button style="background:none;border:none;" onclick="delRoutine('${d.id}')">🗑️</button>` : '🔒'}</div></div><p style="color:#666; font-size:0.8rem; margin:10px 0;">${r.exercises.length} Ejercicios</p><button class="btn" onclick="startWorkout('${d.id}')">ENTRENAR</button>`;
                 l.appendChild(div);
             }
         });
@@ -363,18 +368,27 @@ window.filterExercises = (t) => {
     renderExercises(filtered); 
 };
 
-// --- CORE DEL CREADOR DE RUTINAS (MODIFICADO) ---
-// Ahora renderiza las tarjetas de edición DENTRO de la lista
+// --- CORE DEL CREADOR DE RUTINAS (MODIFICADO - AUTOSORT) ---
 function renderExercises(l) {
     const c = document.getElementById('exercise-selector-list'); c.innerHTML = '';
-    l.forEach(e => {
+    
+    // ORDENACIÓN AUTOMÁTICA: Seleccionados primero
+    const sortedList = [...l].sort((a, b) => {
+        const aSelected = currentRoutineSelections.some(x => x.n === a.n);
+        const bSelected = currentRoutineSelections.some(x => x.n === b.n);
+        if (aSelected && !bSelected) return -1;
+        if (!aSelected && bSelected) return 1;
+        return 0;
+    });
+
+    sortedList.forEach(e => {
         const d = document.createElement('div');
-        // Verificamos si este ejercicio ya está seleccionado
         const selectedIndex = currentRoutineSelections.findIndex(x => x.n === e.n);
         const isSelected = selectedIndex > -1;
         const obj = isSelected ? currentRoutineSelections[selectedIndex] : null;
 
-        // Clase base
+        // Identificador único para scroll
+        d.id = `ex-card-${normalizeText(e.n)}`;
         d.className = 'ex-select-item';
         
         if (isSelected) {
@@ -410,7 +424,6 @@ function renderExercises(l) {
                           title="Superserie">🔗</span>
                 </div>
             `;
-            // Quitamos el onclick global del div para que no interfiera con los inputs
             d.onclick = null; 
 
         } else {
@@ -418,8 +431,9 @@ function renderExercises(l) {
             d.innerHTML = `<img src="${e.img}" onerror="this.src='logo.png'"><span>${e.n}</span>`;
             d.onclick = () => { 
                 currentRoutineSelections.push({ n: e.n, s: false, series: 5, reps: "20-16-16-16-16" });
-                renderExercises(l); 
-                renderSelectedSummary(); // Actualiza la leyenda superior
+                // Al seleccionar, reordenamos y refrescamos
+                renderExercises(sortedList); 
+                renderSelectedSummary(); 
             };
         }
         
@@ -427,23 +441,28 @@ function renderExercises(l) {
     });
 }
 
-// Actualiza solo la LEYENDA SUPERIOR (sin tapar la pantalla)
+// Actualiza solo la LEYENDA SUPERIOR
 window.renderSelectedSummary = () => {
     const div = document.getElementById('selected-summary'); 
-    div.innerHTML = ''; // Limpiamos contenedor (ya no hay tarjetas grandes aquí)
+    div.innerHTML = ''; 
     
-    // Generar Leyenda Superior "One-Line"
     if(currentRoutineSelections.length > 0) {
         const legendDiv = document.createElement('div');
         legendDiv.className = 'editor-legend';
-        legendDiv.style.cssText = "display:flex; gap:8px; overflow-x:auto; padding:12px; background:#111; margin-bottom:15px; white-space:nowrap; border-bottom:1px solid #333; align-items:center; border-radius: 8px; position:sticky; top:0; z-index:10;";
+        legendDiv.style.cssText = "display:flex; gap:8px; overflow-x:auto; padding:12px; background:#111; margin-bottom:15px; white-space:nowrap; border-bottom:1px solid #333; align-items:center; border-radius: 8px; position:sticky; top:0; z-index:10; cursor:pointer;";
         
+        // Al hacer click en la leyenda, scrolleamos al inicio de la lista
+        legendDiv.onclick = () => {
+            document.getElementById('exercise-selector-list').scrollTo({top:0, behavior:'smooth'});
+        };
+
         let legendHTML = '<span style="font-size:0.7rem; color:#888; font-weight:bold; margin-right:5px;">ORDEN:</span>';
         currentRoutineSelections.forEach((obj, idx) => {
             const isLast = idx === currentRoutineSelections.length - 1;
             const linkSymbol = obj.s ? '<span style="color:var(--accent-color); font-weight:bold;">🔗</span>' : '';
             const separator = (isLast && !obj.s) ? '' : '<span style="color:#444">›</span>';
-            legendHTML += `<span style="font-size:0.85rem; color:#fff;">${idx+1}. ${obj.n} ${linkSymbol}</span> ${separator}`;
+            // Click individual en un ejercicio de la leyenda para ir a su tarjeta
+            legendHTML += `<span onclick="event.stopPropagation(); document.getElementById('ex-card-${normalizeText(obj.n)}').scrollIntoView({behavior:'smooth', block:'center'});" style="font-size:0.85rem; color:#fff; cursor:pointer; text-decoration:underline; text-decoration-color:rgba(255,255,255,0.2);">${idx+1}. ${obj.n} ${linkSymbol}</span> ${separator}`;
         });
         legendDiv.innerHTML = legendHTML;
         div.appendChild(legendDiv);
@@ -453,15 +472,13 @@ window.renderSelectedSummary = () => {
 window.updateSelectionData = (idx, field, val) => {
     if(currentRoutineSelections[idx]) {
         currentRoutineSelections[idx][field] = field === 'series' ? (parseInt(val)||0) : val;
-        // No llamamos a renderExercises aquí para no perder el foco del input mientras escribes
     }
 };
 
 window.toggleSuperset = (idx) => {
     if (idx < currentRoutineSelections.length - 1) { 
         currentRoutineSelections[idx].s = !currentRoutineSelections[idx].s; 
-        // Aquí si necesitamos redibujar para actualizar el icono rojo/gris
-        renderExercises(EXERCISES); // Ojo: si hay filtro activo deberíamos usar filtered, pero por simplicidad refrescamos todo o usamos variable global
+        renderExercises(EXERCISES); 
         renderSelectedSummary();
     } else {
         alert("No puedes hacer superserie con el último ejercicio.");
@@ -471,18 +488,40 @@ window.toggleSuperset = (idx) => {
 window.removeSelection = (name) => { 
     currentRoutineSelections = currentRoutineSelections.filter(x => x.n !== name); 
     renderSelectedSummary(); 
-    // Mantiene el filtro de búsqueda actual al redibujar
     window.filterExercises(document.getElementById('ex-search').value); 
 }
 
+// --- GUARDADO MODIFICADO (LOGICA LIBRERIA) ---
 window.saveRoutine = async () => {
     const n = document.getElementById('editor-name').value; const s = window.currentRoutineSelections; 
     if(!n || s.length === 0) return alert("❌ Faltan datos (Nombre o ejercicios)");
+    
     const btn = document.getElementById('btn-save-routine'); btn.innerText = "💾 GUARDANDO...";
+    
+    // LÓGICA DE ASIGNACIÓN:
+    // Si soy Admin, creo la rutina pero NO me la asigno (se queda en librería limpia).
+    // Si soy Atleta, me la asigno automáticamente para verla.
+    let initialAssignments = [];
+    if (userData.role !== 'admin') {
+        initialAssignments.push(currentUser.uid);
+    }
+
     try {
-        const data = { uid: currentUser.uid, name: n, exercises: s, createdAt: serverTimestamp(), assignedTo: [] };
-        if(editingRoutineId) { await updateDoc(doc(db, "routines", editingRoutineId), { name: n, exercises: s }); } 
-        else { await addDoc(collection(db, "routines"), data); }
+        const data = { 
+            uid: currentUser.uid, 
+            name: n, 
+            exercises: s, 
+            createdAt: serverTimestamp(), 
+            assignedTo: initialAssignments 
+        };
+        
+        if(editingRoutineId) { 
+            // Si edito, mantengo las asignaciones existentes, no las sobreescribo
+            await updateDoc(doc(db, "routines", editingRoutineId), { name: n, exercises: s }); 
+        } else { 
+            await addDoc(collection(db, "routines"), data); 
+        }
+        
         alert("✅ Guardado"); switchTab('routines-view');
     } catch(e) { alert("Error: " + e.message); } finally { btn.innerText = "GUARDAR"; }
 };
@@ -506,7 +545,7 @@ window.cloneRoutine = async (id) => {
             name: newName,
             uid: currentUser.uid, 
             createdAt: serverTimestamp(),
-            assignedTo: [] // Resetear usuarios asignados
+            assignedTo: [] // Resetear usuarios asignados para privacidad
         };
 
         await addDoc(collection(db, "routines"), copyData);
@@ -992,7 +1031,6 @@ window.loadAdminUsers = async () => {
     } catch (e) { l.innerHTML = 'Error de permisos o conexión.'; console.log(e); }
 };
 
-// --- LIBRERÍA (CLONAR + EDITAR) ---
 window.loadAdminLibrary = async () => {
     const l = document.getElementById('admin-lib-list'); 
     l.innerHTML = '↻ Cargando...';
@@ -1188,54 +1226,6 @@ async function openCoachView(uid, u) {
         hList.innerHTML += `<div class="history-row" style="grid-template-columns: 60px 1fr 30px 80px;"><div>${date}</div><div style="overflow:hidden; text-overflow:ellipsis;">${d.routine}</div><div>${d.rpe === 'Suave' ? '🟢' : (d.rpe === 'Duro' ? '🟠' : '🔴')}</div><button class="btn-small btn-outline" onclick="viewWorkoutDetails('${d.routine}', '${encodeURIComponent(JSON.stringify(d.details))}', '${encodeURIComponent(d.note||"")}')">Ver</button></div>`;
     });
 }
-
-window.openCoachProgress = async () => {
-    if(!selectedUserCoach) return; const m = document.getElementById('modal-progress'); const s = document.getElementById('progress-select');
-    s.innerHTML = '<option>Cargando...</option>'; 
-    window.openModal('modal-progress');
-    try {
-        const snap = await getDocs(query(collection(db, "workouts"), where("uid", "==", selectedUserCoach)));
-        if (snap.empty) { s.innerHTML = '<option>Sin historial</option>'; return; }
-        const history = snap.docs.map(d => d.data()).sort((a,b) => a.date - b.date);
-        const uniqueExercises = new Set(); history.forEach(w => { if (w.details) w.details.forEach(ex => uniqueExercises.add(ex.n)); });
-        s.innerHTML = '<option value="">-- Selecciona Ejercicio --</option>';
-        Array.from(uniqueExercises).sort().forEach(exName => s.add(new Option(exName, exName)));
-        window.tempHistoryCache = history;
-    } catch (e) { s.innerHTML = '<option>Error</option>'; }
-}
-
-window.viewWorkoutDetails = (title, dataStr, noteStr) => {
-    if(!dataStr) return; 
-    const data = JSON.parse(decodeURIComponent(dataStr));
-    const note = noteStr ? decodeURIComponent(noteStr) : "Sin notas.";
-    const content = document.getElementById('detail-content');
-    
-    document.getElementById('detail-title').innerText = title;
-    
-    let html = `<div class="note-display" style="background: #111; padding: 8px; border-radius: 8px; margin-bottom: 12px; border-left: 4px solid var(--accent-color); font-size:0.85rem;">📝 <b>Nota:</b> ${note}</div>`;
-    
-    data.forEach(ex => {
-        let noteHtml = ex.note ? `<div class="note-badge">📝 "${ex.note}"</div>` : '';
-        html += `<div style="margin-bottom:12px; border-bottom:1px solid #333; padding-bottom:8px;">
-                    <strong style="color:var(--accent-color); font-size:0.95rem;">${ex.n}</strong>
-                    ${noteHtml}
-                    <div style="display:flex; flex-wrap:wrap; gap:5px; margin-top:6px;">`;
-        
-        ex.s.forEach((set, i) => { 
-            const displayNum = (set.numDisplay && set.numDisplay !== "undefined") ? set.numDisplay : (i + 1);
-            const isDropColor = set.isDrop ? "var(--warning-color)" : "#444";
-            const isTextColor = set.isDrop ? "var(--warning-color)" : "#ccc";
-            html += `<span style="background:#222; padding:3px 8px; border-radius:4px; border:1px solid ${isDropColor}; color:${isTextColor}; font-size:0.8rem;">
-                        <small style="opacity:0.7;">#${displayNum}</small> <b>${set.r}</b>x${set.w}k
-                     </span>`; 
-        });
-        
-        html += `</div></div>`;
-    });
-    
-    content.innerHTML = html;
-    window.openModal('modal-details');
-};
 
 window.exportWorkoutHistory = async () => {
     const btn = event.currentTarget; const originalContent = btn.innerHTML;
