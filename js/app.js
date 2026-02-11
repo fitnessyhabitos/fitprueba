@@ -4,7 +4,7 @@ import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, q
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 import { EXERCISES } from './data.js';
 
-console.log("⚡ FIT DATA: App Iniciada (v5.1 - Botón Contacto Pro)...");
+console.log("⚡ FIT DATA: App Iniciada (v5.2 - UI Fix Telegram Centrado)...");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDW40Lg6QvBc3zaaA58konqsH3QtDrRmyM",
@@ -64,9 +64,9 @@ let selectedPlanForMassAssign = null;
 let selectedRoutineForMassAssign = null;
 let assignMode = 'plan'; // 'plan' o 'routine'
 
-// --- FUNCIONES DE INYECCIÓN UI (BOTÓN PRO) ---
+// --- FUNCIONES DE INYECCIÓN UI (CORREGIDO: CENTRADO Y COMPACTO) ---
 function injectTelegramUI() {
-    // 1. Inyectar en Registro
+    // 1. Inyectar en Registro (Sin cambios, funciona bien apilado)
     const regForm = document.getElementById('register-form');
     const regEmail = document.getElementById('reg-email');
     if (regForm && regEmail && !document.getElementById('reg-telegram')) {
@@ -78,40 +78,49 @@ function injectTelegramUI() {
         regEmail.parentNode.insertBefore(input, regEmail);
     }
 
-    // 2. Inyectar en Perfil (Configuración)
+    // 2. Inyectar en Perfil (Configuración) - VERSIÓN CORREGIDA
     const restInput = document.getElementById('cfg-rest-time');
     if (restInput && !document.getElementById('cfg-telegram')) {
         const wrapper = document.createElement('div');
-        wrapper.style.textAlign = "center"; // Centrar el botón
+        // Estilos para separar de la fila anterior y centrar contenido
+        wrapper.style.cssText = "width: 100%; margin-top: 25px; margin-bottom: 25px; text-align: center; border-top: 1px solid #222; padding-top: 15px;"; 
+        
         wrapper.innerHTML = `
-            <label style="display:block; margin-top:10px; font-size:0.8rem; color:#aaa; text-align:left;">Tu Usuario Telegram:</label>
-            <input type="text" id="cfg-telegram" placeholder="@usuario" style="width:100%; margin-bottom:10px; background:#111; border:1px solid #333; color:white; padding:8px; border-radius:4px;">
+            <label style="display:block; margin-bottom:8px; font-size:0.85rem; color:#aaa; font-weight:bold;">📸 Tu Usuario Telegram</label>
+            
+            <input type="text" id="cfg-telegram" placeholder="@usuario" 
+                style="width: 70%; max-width: 250px; margin: 0 auto 15px auto; background: #111; border: 1px solid #444; color: white; padding: 10px; border-radius: 8px; text-align: center; display:block;">
             
             <button onclick="window.contactCoach()" 
                 style="
                     background: var(--accent-color); 
                     color: #000; 
                     border: none; 
-                    padding: 8px 20px; 
+                    padding: 10px 24px; 
                     border-radius: 50px; 
                     font-weight: bold; 
-                    font-size: 0.85rem; 
+                    font-size: 0.9rem; 
                     cursor: pointer; 
                     display: inline-flex; 
                     align-items: center; 
                     justify-content: center;
                     gap: 8px;
-                    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-                    margin-bottom: 15px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
                     transition: transform 0.1s;
                 "
                 onmousedown="this.style.transform='scale(0.95)'"
                 onmouseup="this.style.transform='scale(1)'">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 11.944 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 11.944 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
                 Contactar Coach
             </button>
         `;
-        restInput.parentNode.insertBefore(wrapper, restInput.nextSibling);
+        
+        // TRUCO CLAVE: Insertar después del PADRE del input de descanso (la fila entera), no al lado.
+        // Esto fuerza una nueva línea limpia.
+        const parentContainer = restInput.parentElement; 
+        if (parentContainer) {
+            parentContainer.insertAdjacentElement('afterend', wrapper);
+        }
     }
 }
 
@@ -416,7 +425,7 @@ window.filterExercises = (t) => {
     renderExercises(filtered); 
 };
 
-// --- CORE DEL CREADOR DE RUTINAS ---
+// --- CORE DEL CREADOR DE RUTINAS (AUTOSORT + INLINE EDIT) ---
 function renderExercises(l) {
     const c = document.getElementById('exercise-selector-list'); c.innerHTML = '';
     
@@ -529,31 +538,58 @@ window.removeSelection = (name) => {
     window.filterExercises(document.getElementById('ex-search').value); 
 }
 
-// --- GUARDADO DE RUTINA ---
+// --- GUARDADO LOGICO (LIBRERÍA vs PERSONAL) ---
 window.saveRoutine = async () => {
     const n = document.getElementById('editor-name').value; const s = window.currentRoutineSelections; 
     if(!n || s.length === 0) return alert("❌ Faltan datos");
+    
     const btn = document.getElementById('btn-save-routine'); btn.innerText = "💾 GUARDANDO...";
+    
+    // Si soy Admin, NO me la asigno (se queda en librería general).
+    // Si soy Atleta, me la asigno a mí mismo para verla.
     let initialAssignments = [];
-    if (userData.role !== 'admin') { initialAssignments.push(currentUser.uid); }
+    if (userData.role !== 'admin') {
+        initialAssignments.push(currentUser.uid);
+    }
 
     try {
-        const data = { uid: currentUser.uid, name: n, exercises: s, createdAt: serverTimestamp(), assignedTo: initialAssignments };
-        if(editingRoutineId) { await updateDoc(doc(db, "routines", editingRoutineId), { name: n, exercises: s }); } 
-        else { await addDoc(collection(db, "routines"), data); }
+        const data = { 
+            uid: currentUser.uid, 
+            name: n, 
+            exercises: s, 
+            createdAt: serverTimestamp(), 
+            assignedTo: initialAssignments 
+        };
+        
+        if(editingRoutineId) { 
+            await updateDoc(doc(db, "routines", editingRoutineId), { name: n, exercises: s }); 
+        } else { 
+            await addDoc(collection(db, "routines"), data); 
+        }
+        
         alert("✅ Guardado"); switchTab('routines-view');
     } catch(e) { alert("Error: " + e.message); } finally { btn.innerText = "GUARDAR"; }
 };
 
 window.cloneRoutine = async (id) => {
-    if(!confirm("¿Deseas clonar esta rutina?")) return;
+    if(!confirm("¿Deseas clonar esta rutina para editarla?")) return;
     try {
-        const docSnap = await getDoc(doc(db, "routines", id));
-        if (!docSnap.exists()) return alert("Error.");
+        const docRef = doc(db, "routines", id);
+        const docSnap = await getDoc(docRef);
+        if (!docSnap.exists()) return alert("Error: No existe.");
+        
         const originalData = docSnap.data();
         const newName = prompt("Nombre copia:", `${originalData.name} (Copia)`);
         if (!newName) return; 
-        const copyData = { ...originalData, name: newName, uid: currentUser.uid, createdAt: serverTimestamp(), assignedTo: [] };
+
+        const copyData = {
+            ...originalData,
+            name: newName,
+            uid: currentUser.uid, 
+            createdAt: serverTimestamp(),
+            assignedTo: [] // Resetear asignaciones
+        };
+
         await addDoc(collection(db, "routines"), copyData);
         alert(`✅ Clonada. Ahora puedes editar "${newName}".`);
         window.loadAdminLibrary(); 
