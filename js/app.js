@@ -4,7 +4,7 @@ import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, q
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 import { EXERCISES } from './data.js';
 
-console.log("⚡ FIT DATA: App Iniciada (v4.0 - AutoSort + Clean Admin Library)...");
+console.log("⚡ FIT DATA: App Iniciada (v5.0 - Contacto Directo + UX)...");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDW40Lg6QvBc3zaaA58konqsH3QtDrRmyM",
@@ -64,6 +64,39 @@ let selectedPlanForMassAssign = null;
 let selectedRoutineForMassAssign = null;
 let assignMode = 'plan'; // 'plan' o 'routine'
 
+// --- FUNCIONES DE INYECCIÓN UI (NUEVO) ---
+// Esto asegura que los campos de Telegram aparezcan sin editar el HTML
+function injectTelegramUI() {
+    // 1. Inyectar en Registro
+    const regForm = document.getElementById('register-form');
+    const regEmail = document.getElementById('reg-email');
+    if (regForm && regEmail && !document.getElementById('reg-telegram')) {
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.id = 'reg-telegram';
+        input.placeholder = 'Usuario Telegram (ej: @juanperez)';
+        input.style.marginBottom = '10px';
+        regEmail.parentNode.insertBefore(input, regEmail);
+    }
+
+    // 2. Inyectar en Perfil (Configuración)
+    const restInput = document.getElementById('cfg-rest-time');
+    if (restInput && !document.getElementById('cfg-telegram')) {
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = `
+            <label style="display:block; margin-top:10px; font-size:0.8rem; color:#aaa;">Tu Usuario Telegram:</label>
+            <input type="text" id="cfg-telegram" placeholder="@usuario" style="width:100%; margin-bottom:10px; background:#111; border:1px solid #333; color:white; padding:8px; border-radius:4px;">
+            <button class="btn-outline" onclick="window.contactCoach()" style="width:100%; border-color:#0088cc; color:#0088cc; margin-bottom:15px;">💬 CONTACTAR COACH (@fityhab)</button>
+        `;
+        restInput.parentNode.insertBefore(wrapper, restInput.nextSibling);
+    }
+}
+
+// Llamamos a la inyección al cargar el script
+document.addEventListener('DOMContentLoaded', injectTelegramUI);
+// Y también por si el DOM ya estaba listo o es una SPA pura
+setTimeout(injectTelegramUI, 1000); 
+
 // --- UTILIDADES ---
 function getWeekNumber(d) {
     d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
@@ -84,7 +117,6 @@ function initCommunityListener() {
                 const workoutTime = w.date ? w.date.seconds : 0;
                 if (now - workoutTime < 60 && w.uid !== currentUser.uid) {
                     showToast(`🔥 Alguien terminó: ${w.routine}`);
-                    // Sonido sutil de notificación
                     if(document.getElementById('cfg-sound')?.checked) {
                          const osc = audioCtx?.createOscillator();
                          if(osc) {
@@ -125,14 +157,14 @@ window.toggleElement = (id) => {
     if(el) el.classList.toggle('hidden');
 };
 
-// --- AUDIO ENGINE MEJORADO (LOCK SCREEN + COUNTDOWN) ---
+// --- AUDIO ENGINE ---
 const SILENT_MP3_URL = "https://raw.githubusercontent.com/anars/blank-audio/master/1-minute-of-silence.mp3";
 let htmlAudioElement = new Audio(SILENT_MP3_URL);
 htmlAudioElement.loop = true;
 htmlAudioElement.preload = 'auto';
 htmlAudioElement.volume = 1.0; 
 
-let lastBeepSecond = -1; // Control para no repetir beeps en el mismo segundo
+let lastBeepSecond = -1; 
 
 function initAudioEngine() {
     if (!audioCtx) {
@@ -174,13 +206,11 @@ function updateMediaSessionMetadata(duration, position) {
     }
 }
 
-// Función de Beep (TIC) para cuenta atrás
 function playTickSound(isFinal = false) {
     if(!audioCtx) return;
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     
-    // Agudo para cuenta atrás, Grave para final
     osc.frequency.value = isFinal ? 600 : 1000; 
     osc.type = isFinal ? 'square' : 'sine';
     
@@ -202,7 +232,6 @@ function playTickSound(isFinal = false) {
 document.body.addEventListener('touchstart', initAudioEngine, {once:true});
 document.body.addEventListener('click', initAudioEngine, {once:true});
 
-// Reemplazo de play5Beeps por el nuevo sistema
 window.testSound = () => { playTickSound(false); setTimeout(() => playTickSound(true), 500); };
 
 window.enableNotifications = () => {
@@ -225,6 +254,7 @@ onAuthStateChanged(auth, async (user) => {
             checkPhotoVisualReminder();
             initCommunityListener();
             checkPhotoReminder();
+            injectTelegramUI(); // Asegurar inyección al loguearse
             
             if(userData.role === 'admin' || userData.role === 'assistant') {
                 document.getElementById('top-btn-coach').classList.remove('hidden');
@@ -251,6 +281,7 @@ onAuthStateChanged(auth, async (user) => {
         switchTab('auth-view');
         document.getElementById('main-header').classList.add('hidden');
         if(communityUnsubscribe) communityUnsubscribe();
+        injectTelegramUI(); // Asegurar inyección en login
     }
 });
 
@@ -331,13 +362,12 @@ async function loadRoutines() {
         l.innerHTML = '';
         s.forEach(d=>{
             const r = d.data();
-            // LÓGICA MODIFICADA: Ahora solo miramos asignaciones directas.
-            // Si eres Admin y creas rutina, NO sale aquí a menos que te la asignes.
+            // FILTRO ESTRICTO: Solo mostrar si está explícitamente asignada al usuario
             const isAssignedToMe = r.assignedTo && r.assignedTo.includes(currentUser.uid);
             
             if(isAssignedToMe){
                 const div = document.createElement('div'); div.className = 'card';
-                // Solo si soy el creador puedo editar directamente, sino candado (salvo que sea admin)
+                // El Admin puede editar si la creó él, el usuario solo entrena
                 const canEdit = r.uid === currentUser.uid;
                 
                 div.innerHTML = `<div style="display:flex; justify-content:space-between;"><h3 style="color:var(--accent-color)">${r.name}</h3><div>${canEdit ? `<button style="background:none;border:none;margin-right:10px;" onclick="openEditor('${d.id}')">✏️</button><button style="background:none;border:none;" onclick="delRoutine('${d.id}')">🗑️</button>` : '🔒'}</div></div><p style="color:#666; font-size:0.8rem; margin:10px 0;">${r.exercises.length} Ejercicios</p><button class="btn" onclick="startWorkout('${d.id}')">ENTRENAR</button>`;
@@ -368,11 +398,11 @@ window.filterExercises = (t) => {
     renderExercises(filtered); 
 };
 
-// --- CORE DEL CREADOR DE RUTINAS (MODIFICADO - AUTOSORT) ---
+// --- CORE DEL CREADOR DE RUTINAS (AUTOSORT + INLINE EDIT) ---
 function renderExercises(l) {
     const c = document.getElementById('exercise-selector-list'); c.innerHTML = '';
     
-    // ORDENACIÓN AUTOMÁTICA: Seleccionados primero
+    // Autosort: Seleccionados primero
     const sortedList = [...l].sort((a, b) => {
         const aSelected = currentRoutineSelections.some(x => x.n === a.n);
         const bSelected = currentRoutineSelections.some(x => x.n === b.n);
@@ -387,12 +417,10 @@ function renderExercises(l) {
         const isSelected = selectedIndex > -1;
         const obj = isSelected ? currentRoutineSelections[selectedIndex] : null;
 
-        // Identificador único para scroll
         d.id = `ex-card-${normalizeText(e.n)}`;
         d.className = 'ex-select-item';
         
         if (isSelected) {
-            // --- ESTADO SELECCIONADO (ROJO CON INPUTS) ---
             d.classList.add('selected-red-active');
             d.style.cssText = "background: rgba(50, 10, 10, 0.95); border-left: 4px solid var(--accent-color); border: 1px solid var(--accent-color); padding: 10px; margin-bottom: 5px; border-radius: 8px; flex-direction:column; align-items: stretch;";
             
@@ -406,7 +434,6 @@ function renderExercises(l) {
                     </div>
                     <b class="btn-remove-ex" onclick="event.stopPropagation(); removeSelection('${obj.n}')" style="cursor:pointer; color:#ff5555; font-size:1.2rem; padding:5px;">✕</b>
                 </div>
-                
                 <div class="summary-inputs" style="display:flex; gap:8px; align-items:center; width:100%;">
                     <input type="number" value="${obj.series || 5}" 
                            oninput="window.updateSelectionData(${selectedIndex}, 'series', this.value)" 
@@ -425,33 +452,27 @@ function renderExercises(l) {
                 </div>
             `;
             d.onclick = null; 
-
         } else {
-            // --- ESTADO NO SELECCIONADO (NORMAL) ---
             d.innerHTML = `<img src="${e.img}" onerror="this.src='logo.png'"><span>${e.n}</span>`;
             d.onclick = () => { 
                 currentRoutineSelections.push({ n: e.n, s: false, series: 5, reps: "20-16-16-16-16" });
-                // Al seleccionar, reordenamos y refrescamos
                 renderExercises(sortedList); 
                 renderSelectedSummary(); 
             };
         }
-        
         c.appendChild(d);
     });
 }
 
-// Actualiza solo la LEYENDA SUPERIOR
+// --- LEYENDA SUPERIOR CON SCROLL ---
 window.renderSelectedSummary = () => {
     const div = document.getElementById('selected-summary'); 
     div.innerHTML = ''; 
-    
     if(currentRoutineSelections.length > 0) {
         const legendDiv = document.createElement('div');
         legendDiv.className = 'editor-legend';
         legendDiv.style.cssText = "display:flex; gap:8px; overflow-x:auto; padding:12px; background:#111; margin-bottom:15px; white-space:nowrap; border-bottom:1px solid #333; align-items:center; border-radius: 8px; position:sticky; top:0; z-index:10; cursor:pointer;";
         
-        // Al hacer click en la leyenda, scrolleamos al inicio de la lista
         legendDiv.onclick = () => {
             document.getElementById('exercise-selector-list').scrollTo({top:0, behavior:'smooth'});
         };
@@ -461,7 +482,6 @@ window.renderSelectedSummary = () => {
             const isLast = idx === currentRoutineSelections.length - 1;
             const linkSymbol = obj.s ? '<span style="color:var(--accent-color); font-weight:bold;">🔗</span>' : '';
             const separator = (isLast && !obj.s) ? '' : '<span style="color:#444">›</span>';
-            // Click individual en un ejercicio de la leyenda para ir a su tarjeta
             legendHTML += `<span onclick="event.stopPropagation(); document.getElementById('ex-card-${normalizeText(obj.n)}').scrollIntoView({behavior:'smooth', block:'center'});" style="font-size:0.85rem; color:#fff; cursor:pointer; text-decoration:underline; text-decoration-color:rgba(255,255,255,0.2);">${idx+1}. ${obj.n} ${linkSymbol}</span> ${separator}`;
         });
         legendDiv.innerHTML = legendHTML;
@@ -491,16 +511,15 @@ window.removeSelection = (name) => {
     window.filterExercises(document.getElementById('ex-search').value); 
 }
 
-// --- GUARDADO MODIFICADO (LOGICA LIBRERIA) ---
+// --- GUARDADO LOGICO (LIBRERÍA vs PERSONAL) ---
 window.saveRoutine = async () => {
     const n = document.getElementById('editor-name').value; const s = window.currentRoutineSelections; 
-    if(!n || s.length === 0) return alert("❌ Faltan datos (Nombre o ejercicios)");
+    if(!n || s.length === 0) return alert("❌ Faltan datos");
     
     const btn = document.getElementById('btn-save-routine'); btn.innerText = "💾 GUARDANDO...";
     
-    // LÓGICA DE ASIGNACIÓN:
-    // Si soy Admin, creo la rutina pero NO me la asigno (se queda en librería limpia).
-    // Si soy Atleta, me la asigno automáticamente para verla.
+    // Si soy Admin, NO me la asigno (se queda en librería general).
+    // Si soy Atleta, me la asigno a mí mismo para verla.
     let initialAssignments = [];
     if (userData.role !== 'admin') {
         initialAssignments.push(currentUser.uid);
@@ -516,7 +535,6 @@ window.saveRoutine = async () => {
         };
         
         if(editingRoutineId) { 
-            // Si edito, mantengo las asignaciones existentes, no las sobreescribo
             await updateDoc(doc(db, "routines", editingRoutineId), { name: n, exercises: s }); 
         } else { 
             await addDoc(collection(db, "routines"), data); 
@@ -526,18 +544,15 @@ window.saveRoutine = async () => {
     } catch(e) { alert("Error: " + e.message); } finally { btn.innerText = "GUARDAR"; }
 };
 
-// --- NUEVA FUNCIÓN: CLONAR RUTINA (🖨) ---
 window.cloneRoutine = async (id) => {
     if(!confirm("¿Deseas clonar esta rutina para editarla?")) return;
     try {
         const docRef = doc(db, "routines", id);
         const docSnap = await getDoc(docRef);
-        
-        if (!docSnap.exists()) return alert("Error: La rutina original no existe.");
+        if (!docSnap.exists()) return alert("Error: No existe.");
         
         const originalData = docSnap.data();
-        const newName = prompt("Nombre para la copia:", `${originalData.name} (Copia)`);
-        
+        const newName = prompt("Nombre copia:", `${originalData.name} (Copia)`);
         if (!newName) return; 
 
         const copyData = {
@@ -545,17 +560,13 @@ window.cloneRoutine = async (id) => {
             name: newName,
             uid: currentUser.uid, 
             createdAt: serverTimestamp(),
-            assignedTo: [] // Resetear usuarios asignados para privacidad
+            assignedTo: [] // Resetear asignaciones
         };
 
         await addDoc(collection(db, "routines"), copyData);
-        alert(`✅ Rutina "${newName}" creada. Ahora puedes editarla.`);
+        alert(`✅ Clonada. Ahora puedes editar "${newName}".`);
         window.loadAdminLibrary(); 
-
-    } catch (e) {
-        console.error("Error cloning:", e);
-        alert("Error al clonar: " + e.message);
-    }
+    } catch (e) { alert("Error: " + e.message); }
 };
 
 window.delRoutine = async (id) => { if(confirm("¿Borrar rutina permanentemente?")) await deleteDoc(doc(db,"routines",id)); window.loadAdminLibrary(); };
@@ -696,6 +707,13 @@ window.loadProfile = async () => {
         if(userData.measureHistory && userData.measureHistory.length > 0) renderMeasureChart('chartMeasures', userData.measureHistory);
     } else { document.getElementById('user-measures-section').classList.add('hidden'); }
     if(userData.restTime) document.getElementById('cfg-rest-time').value = userData.restTime;
+    
+    // CARGAR TELEGRAM
+    if(userData.telegram) {
+        const tInput = document.getElementById('cfg-telegram');
+        if(tInput) tInput.value = userData.telegram;
+    }
+
     document.getElementById('stat-workouts').innerText = userData.stats.workouts || 0;
     document.getElementById('stat-kg').innerText = userData.stats.totalKg ? (userData.stats.totalKg/1000).toFixed(1)+'t' : 0;
     document.getElementById('stat-sets').innerText = userData.stats.totalSets || 0;
@@ -731,7 +749,25 @@ window.saveSelfConfig = async (feature, value) => { const update = {}; update[fe
 window.saveMeasurements = async () => { const data = { date: new Date(), chest: document.getElementById('m-chest').value, waist: document.getElementById('m-waist').value, hip: document.getElementById('m-hip').value, arm: document.getElementById('m-arm').value, thigh: document.getElementById('m-thigh').value, calf: document.getElementById('m-calf').value, shoulder: document.getElementById('m-shoulder').value }; await updateDoc(doc(db, "users", currentUser.uid), { measureHistory: arrayUnion(data), measurements: data }); alert("Guardado ✅"); window.loadProfile(); };
 window.calculateAndSaveSkinfolds = async () => { const s = { chest: parseFloat(document.getElementById('p-chest').value)||0, axilla: parseFloat(document.getElementById('p-axilla').value)||0, tricep: parseFloat(document.getElementById('p-tricep').value)||0, subscap: parseFloat(document.getElementById('p-subscap').value)||0, abdo: parseFloat(document.getElementById('p-abdo').value)||0, supra: parseFloat(document.getElementById('p-supra').value)||0, thigh: parseFloat(document.getElementById('p-thigh').value)||0 }; const sum = Object.values(s).reduce((a,b)=>a+b,0); const age = userData.age || 25, gender = userData.gender || 'male'; let bd = (gender === 'male') ? 1.112 - (0.00043499*sum) + (0.00000055*sum*sum) - (0.00028826*age) : 1.097 - (0.00046971*sum) + (0.00000056*sum*sum) - (0.00012828*age); const fat = ((495 / bd) - 450).toFixed(1); await updateDoc(doc(db, "users", currentUser.uid), { skinfoldHistory: arrayUnion({date: new Date(), fat: fat, skinfolds: s}), skinfolds: s, bodyFat: fat }); alert(`Grasa: ${fat}%. Guardado ✅`); window.loadProfile(); };
 window.saveBioEntry = async () => { const muscle = parseFloat(document.getElementById('bio-muscle').value) || 0; const fat = parseFloat(document.getElementById('bio-fat').value) || 0; if(muscle === 0 && fat === 0) return alert("Introduce datos válidos."); const entry = { date: new Date(), muscle: muscle, fat: fat }; await updateDoc(doc(db, "users", currentUser.uid), { bioHistory: arrayUnion(entry) }); alert("Datos Guardados ✅"); if(!userData.bioHistory) userData.bioHistory = []; userData.bioHistory.push(entry); window.loadProfile(); };
-window.saveConfig = async () => { const rt = document.getElementById('cfg-rest-time').value; await updateDoc(doc(db,"users",currentUser.uid), { restTime: parseInt(rt) }); userData.restTime = parseInt(rt); alert("Ajustes Guardados"); };
+
+// GUARDA CONFIGURACIÓN (INCLUIDO TELEGRAM)
+window.saveConfig = async () => { 
+    const rt = document.getElementById('cfg-rest-time').value; 
+    const tg = document.getElementById('cfg-telegram')?.value || "";
+    await updateDoc(doc(db,"users",currentUser.uid), { restTime: parseInt(rt), telegram: tg }); 
+    userData.restTime = parseInt(rt); 
+    userData.telegram = tg;
+    alert("Ajustes Guardados"); 
+};
+
+// FUNCIÓN DE CONTACTO
+window.contactCoach = () => {
+    showToast("💬 Abriendo chat... Te responderemos lo antes posible.");
+    setTimeout(() => {
+        window.open("https://t.me/fityhab", "_blank");
+    }, 1000);
+};
+
 window.savePhotoReminder = async () => { const d = document.getElementById('photo-day').value; const t = document.getElementById('photo-time').value; await updateDoc(doc(db,"users",currentUser.uid), { photoDay:d, photoTime:t }); userData.photoDay = d; userData.photoTime = t; alert("Alarma Guardada"); };
 window.addWeightEntry = async () => { const wStr = prompt("Introduce tu peso (kg):"); if(!wStr) return; const w = parseFloat(wStr.replace(',','.')); if(isNaN(w)) return alert("Número inválido"); let history = userData.weightHistory || []; history.push(w); try { await updateDoc(doc(db,"users",currentUser.uid), {weightHistory: history}); userData.weightHistory = history; window.loadProfile(); alert("✅ Peso Guardado"); } catch(e) { alert("Error al guardar: " + e.message); } };
 
@@ -1196,6 +1232,11 @@ async function openCoachView(uid, u) {
     selectedUserCoach=uid; const freshSnap = await getDoc(doc(db, "users", uid)); const freshU = freshSnap.data(); selectedUserObj = freshU; 
     switchTab('coach-detail-view'); document.getElementById('coach-user-name').innerText=freshU.name + (freshU.role === 'assistant' ? ' (Coach 🛡️)' : ''); document.getElementById('coach-user-email').innerText=freshU.email;
     document.getElementById('coach-user-meta').innerText = `${freshU.gender === 'female' ? '♀️' : '♂️'} ${freshU.age} años • ${freshU.height} cm`;
+    
+    // MOSTRAR TELEGRAM EN ADMIN VIEW
+    const telegramHtml = freshU.telegram ? `<div style="font-size:0.8rem; color:#0088cc; margin-top:5px;">Telegram: ${freshU.telegram}</div>` : '';
+    document.getElementById('coach-user-email').innerHTML += telegramHtml;
+
     if(freshU.photo) { document.getElementById('coach-user-img').src = freshU.photo; document.getElementById('coach-user-img').style.display = 'block'; document.getElementById('coach-user-initial').style.display = 'none'; }
     else { document.getElementById('coach-user-img').style.display = 'none'; document.getElementById('coach-user-initial').style.display = 'block'; document.getElementById('coach-user-initial').innerText = freshU.name.charAt(0).toUpperCase(); }
     document.getElementById('pending-approval-banner').classList.toggle('hidden', freshU.approved);
@@ -1226,6 +1267,54 @@ async function openCoachView(uid, u) {
         hList.innerHTML += `<div class="history-row" style="grid-template-columns: 60px 1fr 30px 80px;"><div>${date}</div><div style="overflow:hidden; text-overflow:ellipsis;">${d.routine}</div><div>${d.rpe === 'Suave' ? '🟢' : (d.rpe === 'Duro' ? '🟠' : '🔴')}</div><button class="btn-small btn-outline" onclick="viewWorkoutDetails('${d.routine}', '${encodeURIComponent(JSON.stringify(d.details))}', '${encodeURIComponent(d.note||"")}')">Ver</button></div>`;
     });
 }
+
+window.openCoachProgress = async () => {
+    if(!selectedUserCoach) return; const m = document.getElementById('modal-progress'); const s = document.getElementById('progress-select');
+    s.innerHTML = '<option>Cargando...</option>'; 
+    window.openModal('modal-progress');
+    try {
+        const snap = await getDocs(query(collection(db, "workouts"), where("uid", "==", selectedUserCoach)));
+        if (snap.empty) { s.innerHTML = '<option>Sin historial</option>'; return; }
+        const history = snap.docs.map(d => d.data()).sort((a,b) => a.date - b.date);
+        const uniqueExercises = new Set(); history.forEach(w => { if (w.details) w.details.forEach(ex => uniqueExercises.add(ex.n)); });
+        s.innerHTML = '<option value="">-- Selecciona Ejercicio --</option>';
+        Array.from(uniqueExercises).sort().forEach(exName => s.add(new Option(exName, exName)));
+        window.tempHistoryCache = history;
+    } catch (e) { s.innerHTML = '<option>Error</option>'; }
+}
+
+window.viewWorkoutDetails = (title, dataStr, noteStr) => {
+    if(!dataStr) return; 
+    const data = JSON.parse(decodeURIComponent(dataStr));
+    const note = noteStr ? decodeURIComponent(noteStr) : "Sin notas.";
+    const content = document.getElementById('detail-content');
+    
+    document.getElementById('detail-title').innerText = title;
+    
+    let html = `<div class="note-display" style="background: #111; padding: 8px; border-radius: 8px; margin-bottom: 12px; border-left: 4px solid var(--accent-color); font-size:0.85rem;">📝 <b>Nota:</b> ${note}</div>`;
+    
+    data.forEach(ex => {
+        let noteHtml = ex.note ? `<div class="note-badge">📝 "${ex.note}"</div>` : '';
+        html += `<div style="margin-bottom:12px; border-bottom:1px solid #333; padding-bottom:8px;">
+                    <strong style="color:var(--accent-color); font-size:0.95rem;">${ex.n}</strong>
+                    ${noteHtml}
+                    <div style="display:flex; flex-wrap:wrap; gap:5px; margin-top:6px;">`;
+        
+        ex.s.forEach((set, i) => { 
+            const displayNum = (set.numDisplay && set.numDisplay !== "undefined") ? set.numDisplay : (i + 1);
+            const isDropColor = set.isDrop ? "var(--warning-color)" : "#444";
+            const isTextColor = set.isDrop ? "var(--warning-color)" : "#ccc";
+            html += `<span style="background:#222; padding:3px 8px; border-radius:4px; border:1px solid ${isDropColor}; color:${isTextColor}; font-size:0.8rem;">
+                        <small style="opacity:0.7;">#${displayNum}</small> <b>${set.r}</b>x${set.w}k
+                     </span>`; 
+        });
+        
+        html += `</div></div>`;
+    });
+    
+    content.innerHTML = html;
+    window.openModal('modal-details');
+};
 
 window.exportWorkoutHistory = async () => {
     const btn = event.currentTarget; const originalContent = btn.innerHTML;
@@ -1267,10 +1356,15 @@ window.exportWorkoutHistory = async () => {
 
 document.getElementById('btn-register').onclick=async()=>{
     const secretCode = document.getElementById('reg-code').value;
+    const tgUser = document.getElementById('reg-telegram')?.value || ""; // Captura Telegram
     try{ 
         const c=await createUserWithEmailAndPassword(auth,document.getElementById('reg-email').value,document.getElementById('reg-pass').value);
         await setDoc(doc(db,"users",c.user.uid),{
-            name:document.getElementById('reg-name').value, email:document.getElementById('reg-email').value, secretCode: secretCode, approved: false, role: 'athlete', 
+            name:document.getElementById('reg-name').value, 
+            email:document.getElementById('reg-email').value, 
+            secretCode: secretCode, 
+            telegram: tgUser, // Guarda en BD
+            approved: false, role: 'athlete', 
             gender:document.getElementById('reg-gender').value, age:parseInt(document.getElementById('reg-age').value), height:parseInt(document.getElementById('reg-height').value), 
             weightHistory: [], measureHistory: [], skinfoldHistory: [], bioHistory: [], prs: {}, stats: {workouts:0, totalKg:0, totalSets:0, totalReps:0}, muscleStats: {}, joined: serverTimestamp(), showVideos: false, showBio: false
         });
