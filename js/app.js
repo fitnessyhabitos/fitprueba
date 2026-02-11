@@ -4,7 +4,7 @@ import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, q
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 import { EXERCISES } from './data.js';
 
-console.log("⚡ FIT DATA: App Iniciada (v5.0 - Contacto Directo + UX)...");
+console.log("⚡ FIT DATA: App Iniciada (v5.1 - Botón Contacto Pro)...");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDW40Lg6QvBc3zaaA58konqsH3QtDrRmyM",
@@ -64,8 +64,7 @@ let selectedPlanForMassAssign = null;
 let selectedRoutineForMassAssign = null;
 let assignMode = 'plan'; // 'plan' o 'routine'
 
-// --- FUNCIONES DE INYECCIÓN UI (NUEVO) ---
-// Esto asegura que los campos de Telegram aparezcan sin editar el HTML
+// --- FUNCIONES DE INYECCIÓN UI (BOTÓN PRO) ---
 function injectTelegramUI() {
     // 1. Inyectar en Registro
     const regForm = document.getElementById('register-form');
@@ -83,18 +82,40 @@ function injectTelegramUI() {
     const restInput = document.getElementById('cfg-rest-time');
     if (restInput && !document.getElementById('cfg-telegram')) {
         const wrapper = document.createElement('div');
+        wrapper.style.textAlign = "center"; // Centrar el botón
         wrapper.innerHTML = `
-            <label style="display:block; margin-top:10px; font-size:0.8rem; color:#aaa;">Tu Usuario Telegram:</label>
+            <label style="display:block; margin-top:10px; font-size:0.8rem; color:#aaa; text-align:left;">Tu Usuario Telegram:</label>
             <input type="text" id="cfg-telegram" placeholder="@usuario" style="width:100%; margin-bottom:10px; background:#111; border:1px solid #333; color:white; padding:8px; border-radius:4px;">
-            <button class="btn-outline" onclick="window.contactCoach()" style="width:100%; border-color:#0088cc; color:#0088cc; margin-bottom:15px;">💬 CONTACTAR COACH (@fityhab)</button>
+            
+            <button onclick="window.contactCoach()" 
+                style="
+                    background: var(--accent-color); 
+                    color: #000; 
+                    border: none; 
+                    padding: 8px 20px; 
+                    border-radius: 50px; 
+                    font-weight: bold; 
+                    font-size: 0.85rem; 
+                    cursor: pointer; 
+                    display: inline-flex; 
+                    align-items: center; 
+                    justify-content: center;
+                    gap: 8px;
+                    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+                    margin-bottom: 15px;
+                    transition: transform 0.1s;
+                "
+                onmousedown="this.style.transform='scale(0.95)'"
+                onmouseup="this.style.transform='scale(1)'">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 11.944 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
+                Contactar Coach
+            </button>
         `;
         restInput.parentNode.insertBefore(wrapper, restInput.nextSibling);
     }
 }
 
-// Llamamos a la inyección al cargar el script
 document.addEventListener('DOMContentLoaded', injectTelegramUI);
-// Y también por si el DOM ya estaba listo o es una SPA pura
 setTimeout(injectTelegramUI, 1000); 
 
 // --- UTILIDADES ---
@@ -254,7 +275,7 @@ onAuthStateChanged(auth, async (user) => {
             checkPhotoVisualReminder();
             initCommunityListener();
             checkPhotoReminder();
-            injectTelegramUI(); // Asegurar inyección al loguearse
+            injectTelegramUI();
             
             if(userData.role === 'admin' || userData.role === 'assistant') {
                 document.getElementById('top-btn-coach').classList.remove('hidden');
@@ -281,7 +302,7 @@ onAuthStateChanged(auth, async (user) => {
         switchTab('auth-view');
         document.getElementById('main-header').classList.add('hidden');
         if(communityUnsubscribe) communityUnsubscribe();
-        injectTelegramUI(); // Asegurar inyección en login
+        injectTelegramUI();
     }
 });
 
@@ -362,14 +383,11 @@ async function loadRoutines() {
         l.innerHTML = '';
         s.forEach(d=>{
             const r = d.data();
-            // FILTRO ESTRICTO: Solo mostrar si está explícitamente asignada al usuario
             const isAssignedToMe = r.assignedTo && r.assignedTo.includes(currentUser.uid);
             
             if(isAssignedToMe){
                 const div = document.createElement('div'); div.className = 'card';
-                // El Admin puede editar si la creó él, el usuario solo entrena
                 const canEdit = r.uid === currentUser.uid;
-                
                 div.innerHTML = `<div style="display:flex; justify-content:space-between;"><h3 style="color:var(--accent-color)">${r.name}</h3><div>${canEdit ? `<button style="background:none;border:none;margin-right:10px;" onclick="openEditor('${d.id}')">✏️</button><button style="background:none;border:none;" onclick="delRoutine('${d.id}')">🗑️</button>` : '🔒'}</div></div><p style="color:#666; font-size:0.8rem; margin:10px 0;">${r.exercises.length} Ejercicios</p><button class="btn" onclick="startWorkout('${d.id}')">ENTRENAR</button>`;
                 l.appendChild(div);
             }
@@ -398,7 +416,7 @@ window.filterExercises = (t) => {
     renderExercises(filtered); 
 };
 
-// --- CORE DEL CREADOR DE RUTINAS (AUTOSORT + INLINE EDIT) ---
+// --- CORE DEL CREADOR DE RUTINAS ---
 function renderExercises(l) {
     const c = document.getElementById('exercise-selector-list'); c.innerHTML = '';
     
@@ -511,58 +529,31 @@ window.removeSelection = (name) => {
     window.filterExercises(document.getElementById('ex-search').value); 
 }
 
-// --- GUARDADO LOGICO (LIBRERÍA vs PERSONAL) ---
+// --- GUARDADO DE RUTINA ---
 window.saveRoutine = async () => {
     const n = document.getElementById('editor-name').value; const s = window.currentRoutineSelections; 
     if(!n || s.length === 0) return alert("❌ Faltan datos");
-    
     const btn = document.getElementById('btn-save-routine'); btn.innerText = "💾 GUARDANDO...";
-    
-    // Si soy Admin, NO me la asigno (se queda en librería general).
-    // Si soy Atleta, me la asigno a mí mismo para verla.
     let initialAssignments = [];
-    if (userData.role !== 'admin') {
-        initialAssignments.push(currentUser.uid);
-    }
+    if (userData.role !== 'admin') { initialAssignments.push(currentUser.uid); }
 
     try {
-        const data = { 
-            uid: currentUser.uid, 
-            name: n, 
-            exercises: s, 
-            createdAt: serverTimestamp(), 
-            assignedTo: initialAssignments 
-        };
-        
-        if(editingRoutineId) { 
-            await updateDoc(doc(db, "routines", editingRoutineId), { name: n, exercises: s }); 
-        } else { 
-            await addDoc(collection(db, "routines"), data); 
-        }
-        
+        const data = { uid: currentUser.uid, name: n, exercises: s, createdAt: serverTimestamp(), assignedTo: initialAssignments };
+        if(editingRoutineId) { await updateDoc(doc(db, "routines", editingRoutineId), { name: n, exercises: s }); } 
+        else { await addDoc(collection(db, "routines"), data); }
         alert("✅ Guardado"); switchTab('routines-view');
     } catch(e) { alert("Error: " + e.message); } finally { btn.innerText = "GUARDAR"; }
 };
 
 window.cloneRoutine = async (id) => {
-    if(!confirm("¿Deseas clonar esta rutina para editarla?")) return;
+    if(!confirm("¿Deseas clonar esta rutina?")) return;
     try {
-        const docRef = doc(db, "routines", id);
-        const docSnap = await getDoc(docRef);
-        if (!docSnap.exists()) return alert("Error: No existe.");
-        
+        const docSnap = await getDoc(doc(db, "routines", id));
+        if (!docSnap.exists()) return alert("Error.");
         const originalData = docSnap.data();
         const newName = prompt("Nombre copia:", `${originalData.name} (Copia)`);
         if (!newName) return; 
-
-        const copyData = {
-            ...originalData,
-            name: newName,
-            uid: currentUser.uid, 
-            createdAt: serverTimestamp(),
-            assignedTo: [] // Resetear asignaciones
-        };
-
+        const copyData = { ...originalData, name: newName, uid: currentUser.uid, createdAt: serverTimestamp(), assignedTo: [] };
         await addDoc(collection(db, "routines"), copyData);
         alert(`✅ Clonada. Ahora puedes editar "${newName}".`);
         window.loadAdminLibrary(); 
@@ -708,7 +699,6 @@ window.loadProfile = async () => {
     } else { document.getElementById('user-measures-section').classList.add('hidden'); }
     if(userData.restTime) document.getElementById('cfg-rest-time').value = userData.restTime;
     
-    // CARGAR TELEGRAM
     if(userData.telegram) {
         const tInput = document.getElementById('cfg-telegram');
         if(tInput) tInput.value = userData.telegram;
@@ -738,7 +728,6 @@ window.loadProfile = async () => {
         });
     } catch(e) { histDiv.innerHTML = "Error."; }
     
-    // --- RENDERIZADO DEL MAPA MUSCULAR (RADAR CHART) ---
     renderMuscleRadar('userMuscleChart', userData.muscleStats || {});
 }
 
@@ -750,7 +739,6 @@ window.saveMeasurements = async () => { const data = { date: new Date(), chest: 
 window.calculateAndSaveSkinfolds = async () => { const s = { chest: parseFloat(document.getElementById('p-chest').value)||0, axilla: parseFloat(document.getElementById('p-axilla').value)||0, tricep: parseFloat(document.getElementById('p-tricep').value)||0, subscap: parseFloat(document.getElementById('p-subscap').value)||0, abdo: parseFloat(document.getElementById('p-abdo').value)||0, supra: parseFloat(document.getElementById('p-supra').value)||0, thigh: parseFloat(document.getElementById('p-thigh').value)||0 }; const sum = Object.values(s).reduce((a,b)=>a+b,0); const age = userData.age || 25, gender = userData.gender || 'male'; let bd = (gender === 'male') ? 1.112 - (0.00043499*sum) + (0.00000055*sum*sum) - (0.00028826*age) : 1.097 - (0.00046971*sum) + (0.00000056*sum*sum) - (0.00012828*age); const fat = ((495 / bd) - 450).toFixed(1); await updateDoc(doc(db, "users", currentUser.uid), { skinfoldHistory: arrayUnion({date: new Date(), fat: fat, skinfolds: s}), skinfolds: s, bodyFat: fat }); alert(`Grasa: ${fat}%. Guardado ✅`); window.loadProfile(); };
 window.saveBioEntry = async () => { const muscle = parseFloat(document.getElementById('bio-muscle').value) || 0; const fat = parseFloat(document.getElementById('bio-fat').value) || 0; if(muscle === 0 && fat === 0) return alert("Introduce datos válidos."); const entry = { date: new Date(), muscle: muscle, fat: fat }; await updateDoc(doc(db, "users", currentUser.uid), { bioHistory: arrayUnion(entry) }); alert("Datos Guardados ✅"); if(!userData.bioHistory) userData.bioHistory = []; userData.bioHistory.push(entry); window.loadProfile(); };
 
-// GUARDA CONFIGURACIÓN (INCLUIDO TELEGRAM)
 window.saveConfig = async () => { 
     const rt = document.getElementById('cfg-rest-time').value; 
     const tg = document.getElementById('cfg-telegram')?.value || "";
@@ -760,7 +748,6 @@ window.saveConfig = async () => {
     alert("Ajustes Guardados"); 
 };
 
-// FUNCIÓN DE CONTACTO
 window.contactCoach = () => {
     showToast("💬 Abriendo chat... Te responderemos lo antes posible.");
     setTimeout(() => {
@@ -1233,7 +1220,6 @@ async function openCoachView(uid, u) {
     switchTab('coach-detail-view'); document.getElementById('coach-user-name').innerText=freshU.name + (freshU.role === 'assistant' ? ' (Coach 🛡️)' : ''); document.getElementById('coach-user-email').innerText=freshU.email;
     document.getElementById('coach-user-meta').innerText = `${freshU.gender === 'female' ? '♀️' : '♂️'} ${freshU.age} años • ${freshU.height} cm`;
     
-    // MOSTRAR TELEGRAM EN ADMIN VIEW
     const telegramHtml = freshU.telegram ? `<div style="font-size:0.8rem; color:#0088cc; margin-top:5px;">Telegram: ${freshU.telegram}</div>` : '';
     document.getElementById('coach-user-email').innerHTML += telegramHtml;
 
@@ -1267,54 +1253,6 @@ async function openCoachView(uid, u) {
         hList.innerHTML += `<div class="history-row" style="grid-template-columns: 60px 1fr 30px 80px;"><div>${date}</div><div style="overflow:hidden; text-overflow:ellipsis;">${d.routine}</div><div>${d.rpe === 'Suave' ? '🟢' : (d.rpe === 'Duro' ? '🟠' : '🔴')}</div><button class="btn-small btn-outline" onclick="viewWorkoutDetails('${d.routine}', '${encodeURIComponent(JSON.stringify(d.details))}', '${encodeURIComponent(d.note||"")}')">Ver</button></div>`;
     });
 }
-
-window.openCoachProgress = async () => {
-    if(!selectedUserCoach) return; const m = document.getElementById('modal-progress'); const s = document.getElementById('progress-select');
-    s.innerHTML = '<option>Cargando...</option>'; 
-    window.openModal('modal-progress');
-    try {
-        const snap = await getDocs(query(collection(db, "workouts"), where("uid", "==", selectedUserCoach)));
-        if (snap.empty) { s.innerHTML = '<option>Sin historial</option>'; return; }
-        const history = snap.docs.map(d => d.data()).sort((a,b) => a.date - b.date);
-        const uniqueExercises = new Set(); history.forEach(w => { if (w.details) w.details.forEach(ex => uniqueExercises.add(ex.n)); });
-        s.innerHTML = '<option value="">-- Selecciona Ejercicio --</option>';
-        Array.from(uniqueExercises).sort().forEach(exName => s.add(new Option(exName, exName)));
-        window.tempHistoryCache = history;
-    } catch (e) { s.innerHTML = '<option>Error</option>'; }
-}
-
-window.viewWorkoutDetails = (title, dataStr, noteStr) => {
-    if(!dataStr) return; 
-    const data = JSON.parse(decodeURIComponent(dataStr));
-    const note = noteStr ? decodeURIComponent(noteStr) : "Sin notas.";
-    const content = document.getElementById('detail-content');
-    
-    document.getElementById('detail-title').innerText = title;
-    
-    let html = `<div class="note-display" style="background: #111; padding: 8px; border-radius: 8px; margin-bottom: 12px; border-left: 4px solid var(--accent-color); font-size:0.85rem;">📝 <b>Nota:</b> ${note}</div>`;
-    
-    data.forEach(ex => {
-        let noteHtml = ex.note ? `<div class="note-badge">📝 "${ex.note}"</div>` : '';
-        html += `<div style="margin-bottom:12px; border-bottom:1px solid #333; padding-bottom:8px;">
-                    <strong style="color:var(--accent-color); font-size:0.95rem;">${ex.n}</strong>
-                    ${noteHtml}
-                    <div style="display:flex; flex-wrap:wrap; gap:5px; margin-top:6px;">`;
-        
-        ex.s.forEach((set, i) => { 
-            const displayNum = (set.numDisplay && set.numDisplay !== "undefined") ? set.numDisplay : (i + 1);
-            const isDropColor = set.isDrop ? "var(--warning-color)" : "#444";
-            const isTextColor = set.isDrop ? "var(--warning-color)" : "#ccc";
-            html += `<span style="background:#222; padding:3px 8px; border-radius:4px; border:1px solid ${isDropColor}; color:${isTextColor}; font-size:0.8rem;">
-                        <small style="opacity:0.7;">#${displayNum}</small> <b>${set.r}</b>x${set.w}k
-                     </span>`; 
-        });
-        
-        html += `</div></div>`;
-    });
-    
-    content.innerHTML = html;
-    window.openModal('modal-details');
-};
 
 window.exportWorkoutHistory = async () => {
     const btn = event.currentTarget; const originalContent = btn.innerHTML;
@@ -1356,14 +1294,14 @@ window.exportWorkoutHistory = async () => {
 
 document.getElementById('btn-register').onclick=async()=>{
     const secretCode = document.getElementById('reg-code').value;
-    const tgUser = document.getElementById('reg-telegram')?.value || ""; // Captura Telegram
+    const tgUser = document.getElementById('reg-telegram')?.value || ""; 
     try{ 
         const c=await createUserWithEmailAndPassword(auth,document.getElementById('reg-email').value,document.getElementById('reg-pass').value);
         await setDoc(doc(db,"users",c.user.uid),{
             name:document.getElementById('reg-name').value, 
             email:document.getElementById('reg-email').value, 
             secretCode: secretCode, 
-            telegram: tgUser, // Guarda en BD
+            telegram: tgUser, 
             approved: false, role: 'athlete', 
             gender:document.getElementById('reg-gender').value, age:parseInt(document.getElementById('reg-age').value), height:parseInt(document.getElementById('reg-height').value), 
             weightHistory: [], measureHistory: [], skinfoldHistory: [], bioHistory: [], prs: {}, stats: {workouts:0, totalKg:0, totalSets:0, totalReps:0}, muscleStats: {}, joined: serverTimestamp(), showVideos: false, showBio: false
