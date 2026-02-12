@@ -635,6 +635,25 @@
     </div>
 </div>
 
+    <div id="modal-send-notice" class="modal">
+    <div class="modal-content">
+        <h3 style="color:var(--success-color); margin-bottom:5px;">ENVIAR MENSAJE</h3>
+        <p style="font-size:0.8rem; color:#888; margin-bottom:15px;">Para: <span id="modal-notice-target-name" style="color:white; font-weight:bold;">-</span></p>
+        
+        <input type="text" id="ind-notice-title" placeholder="Título del mensaje (ej: ¡Buen progreso!)">
+        <textarea id="ind-notice-text" rows="4" placeholder="Escribe aquí el aviso personal para el atleta..."></textarea>
+        <input type="text" id="ind-notice-link" placeholder="Link opcional (ej: video de técnica)">
+        
+        <div style="margin:10px 0; text-align:left;">
+            <label style="font-size:0.7rem; color:#666;">Imagen adjunta:</label>
+            <input type="file" id="ind-notice-file" accept="image/*" class="btn-outline" style="font-size:0.7rem;">
+        </div>
+
+        <button class="btn" onclick="window.publishNotice(selectedUserCoach)" style="background:var(--success-color); color:black; margin-top:10px;">ENVIAR AHORA</button>
+        <button class="btn-outline" onclick="window.closeModal('modal-send-notice')">CANCELAR</button>
+    </div>
+</div>
+
     <script type="module" src="js/app.js"></script>
 
 </body>
