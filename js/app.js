@@ -1370,45 +1370,57 @@ window.viewRoutineContent = (name, dataStr) => {
     window.openModal('modal-details');
 };
 
-// --- FUNCIÓN QUE FALTABA PARA VER DETALLES DE HISTORIAL ---
+// --- VISOR DE DETALLES (DISEÑO GRID TIPO TICKET) ---
 window.viewWorkoutDetails = (routineName, detailsStr, noteStr) => {
     try {
         const details = JSON.parse(decodeURIComponent(detailsStr));
         const note = decodeURIComponent(noteStr || "");
         
-        let html = '';
-        if (note) {
-            html += `<div class="note-display">📝 <b>Nota:</b> ${note}</div>`;
-        }
+        // 1. Renderizar la Nota (si existe o "Sin notas")
+        let html = `<div class="detail-note-box">📝 <b>Nota:</b> ${note || "Sin notas."}</div>`;
         
+        // 2. Renderizar cada ejercicio
         details.forEach(ex => {
             const name = ex.n || ex; 
             const sets = ex.s || [];
             
-            html += `<div style="margin-bottom:15px; border-bottom:1px solid #333; padding-bottom:10px;">`;
-            html += `<div style="font-weight:bold; color:var(--accent-color); margin-bottom:5px;">${name}</div>`;
+            html += `<div class="detail-exercise-card">
+                     <div class="detail-exercise-title">${name}</div>
+                     <div class="detail-sets-grid">`;
             
             if (sets.length > 0) {
-                html += `<div style="display:grid; grid-template-columns: 20px 1fr 1fr; gap:5px; font-size:0.8rem; color:#888;"><div>#</div><div>Kg</div><div>Reps</div></div>`;
+                // 3. Renderizar las cajitas de series
                 sets.forEach((s, i) => {
                     const num = s.numDisplay || (i + 1);
-                    const w = s.w || 0;
-                    const r = s.r || 0;
-                    const isDrop = s.isDrop ? '<span style="color:var(--warning-color)">(DROP)</span>' : '';
-                    html += `<div style="display:grid; grid-template-columns: 20px 1fr 1fr; gap:5px; font-size:0.8rem; margin-top:3px; color:#ddd;"><div>${num}</div><div>${w}</div><div>${r} ${isDrop}</div></div>`;
+                    const w = s.w || 0; // Peso
+                    const r = s.r || 0; // Repes
+                    
+                    // Icono de gota si es Dropset
+                    const isDrop = s.isDrop ? '<span style="color:var(--warning-color)">💧</span>' : '';
+                    
+                    // Formato: #1 20x42.5k
+                    html += `<div class="detail-set-badge">
+                                <span class="detail-set-num">#${num}</span>
+                                <b>${r}</b>x${w}k ${isDrop}
+                             </div>`;
                 });
-            } else {
-                html += `<div style="font-size:0.7rem; color:#666;">Sin datos de series.</div>`;
+            } else { 
+                html += `<div style="font-size:0.7rem; color:#666; grid-column: 1/-1;">Sin datos.</div>`; 
             }
-            html += `</div>`;
+            
+            html += `</div></div>`; // Cierre grid y card
         });
         
-        document.getElementById('detail-title').innerText = routineName;
+        // Inyectar en el Modal
+        document.getElementById('detail-title').innerText = routineName; // Título Rutina (ej: Piernas)
         document.getElementById('detail-content').innerHTML = html;
+        
         window.openModal('modal-details');
-    } catch (e) { console.error("Error visualizando detalles:", e); alert("Error al cargar los detalles del entreno."); }
+    } catch (e) { 
+        console.error("Error visualizando detalles:", e); 
+        alert("Error al cargar los detalles del entreno."); 
+    }
 };
-
 window.openVideo = (url) => { if (!url) return; let embedUrl = url.includes("watch?v=") ? url.replace("watch?v=", "embed/") : url.replace("youtu.be/", "youtube.com/embed/"); document.getElementById('youtube-frame').src = embedUrl + "?autoplay=1&rel=0"; window.openModal('modal-video'); };
 window.closeVideo = () => { window.closeModal('modal-video'); document.getElementById('youtube-frame').src = ""; };
 
