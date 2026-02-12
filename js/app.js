@@ -4,7 +4,7 @@ import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, q
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 import { EXERCISES } from './data.js';
 
-console.log("⚡ FIT DATA: App Iniciada (v6.1 - Fix History Viewer)...");
+console.log("⚡ FIT DATA: App Iniciada (v7.0 - Spotify Friendly)...");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDW40Lg6QvBc3zaaA58konqsH3QtDrRmyM",
@@ -42,7 +42,7 @@ let noteTargetIndex = null;
 let communityUnsubscribe = null; 
 
 // Filtros Ranking
-let rankFilterTime = 'all';      
+let rankFilterTime = 'all';       
 let rankFilterGender = 'all';    
 let rankFilterCat = 'kg';        
 
@@ -126,12 +126,13 @@ function initCommunityListener() {
                 if (now - workoutTime < 60 && w.uid !== currentUser.uid) {
                     showToast(`🔥 Alguien terminó: ${w.routine}`);
                     if(document.getElementById('cfg-sound')?.checked) {
-                         const osc = audioCtx?.createOscillator();
-                         if(osc) {
-                             const g = audioCtx.createGain();
-                             osc.connect(g); g.connect(audioCtx.destination);
-                             osc.frequency.value = 500; osc.start(); g.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.5);
-                             osc.stop(audioCtx.currentTime + 0.5);
+                         // Sonido breve de comunidad
+                         if(audioCtx && audioCtx.state !== 'suspended'){
+                            const osc = audioCtx.createOscillator();
+                            const g = audioCtx.createGain();
+                            osc.connect(g); g.connect(audioCtx.destination);
+                            osc.frequency.value = 500; osc.start(); g.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.5);
+                            osc.stop(audioCtx.currentTime + 0.5);
                          }
                     }
                 }
@@ -165,61 +166,37 @@ window.toggleElement = (id) => {
     if(el) el.classList.toggle('hidden');
 };
 
-// --- AUDIO ENGINE ---
-const SILENT_MP3_URL = "https://raw.githubusercontent.com/anars/blank-audio/master/1-minute-of-silence.mp3";
-let htmlAudioElement = new Audio(SILENT_MP3_URL);
-htmlAudioElement.loop = true;
-htmlAudioElement.preload = 'auto';
-htmlAudioElement.volume = 1.0; 
-
+// --- AUDIO ENGINE (OPTIMIZADO SPOTIFY) ---
+// Se ha eliminado el loop de audio silencioso para no pausar Spotify.
 let lastBeepSecond = -1; 
 
 function initAudioEngine() {
+    // Solo inicializamos el AudioContext para los beeps.
     if (!audioCtx) {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         audioCtx = new AudioContext();
     }
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-    
-    htmlAudioElement.play().then(() => {
-        if ('mediaSession' in navigator) {
-            navigator.mediaSession.playbackState = "playing";
-            updateMediaSessionMetadata(totalRestTime || 60, 0);
-            
-            navigator.mediaSession.setActionHandler('play', () => { 
-                htmlAudioElement.play(); navigator.mediaSession.playbackState = "playing"; 
-            });
-            navigator.mediaSession.setActionHandler('pause', () => { 
-                navigator.mediaSession.playbackState = "paused"; 
-            });
-            navigator.mediaSession.setActionHandler('previoustrack', () => window.addRestTime(-10));
-            navigator.mediaSession.setActionHandler('nexttrack', () => window.addRestTime(10));
-        }
-    }).catch(e => console.log("Esperando interacción de usuario..."));
+    // Asegurar que el contexto está activo
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+    // NOTA: Ya no usamos htmlAudioElement.play() para no robar el foco de audio
 }
 
+// Función vacía para compatibilidad
 function updateMediaSessionMetadata(duration, position) {
-    if ('mediaSession' in navigator) {
-        navigator.mediaSession.metadata = new MediaMetadata({
-            title: `Descanso: ${Math.ceil(duration - position)}s`,
-            artist: 'Fit Data Pro',
-            album: 'Recuperando...',
-            artwork: [{ src: 'logo.png', sizes: '512x512', type: 'image/png' }]
-        });
-        navigator.mediaSession.setPositionState({
-            duration: duration,
-            playbackRate: 1,
-            position: position
-        });
-    }
+    // Desactivado para no interrumpir Spotify
 }
 
 function playTickSound(isFinal = false) {
     if(!audioCtx) return;
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     
-    osc.frequency.value = isFinal ? 600 : 1000; 
+    // Frecuencias más altas para cortar sobre la música
+    osc.frequency.value = isFinal ? 880 : 1200; 
     osc.type = isFinal ? 'square' : 'sine';
     
     osc.connect(gain);
@@ -228,9 +205,10 @@ function playTickSound(isFinal = false) {
     const now = audioCtx.currentTime;
     osc.start(now);
     
-    const duration = isFinal ? 0.8 : 0.1;
+    const duration = isFinal ? 0.6 : 0.08;
     
-    gain.gain.setValueAtTime(0.5, now);
+    // Volumen ajustado para oirse con música de fondo
+    gain.gain.setValueAtTime(0.8, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
     osc.stop(now + duration);
     
@@ -909,13 +887,18 @@ function saveLocalWorkout() { localStorage.setItem('fit_active_workout', JSON.st
 window.cancelWorkout = () => { if(confirm("⚠ ¿SEGURO QUE QUIERES CANCELAR?\nSe perderán los datos de este entrenamiento.")) { activeWorkout = null; localStorage.removeItem('fit_active_workout'); if(durationInt) clearInterval(durationInt); switchTab('routines-view'); } };
 
 window.startWorkout = async (rid) => {
-    if(document.getElementById('cfg-wake').checked && 'wakeLock' in navigator) try{wakeLock=await navigator.wakeLock.request('screen');}catch(e){}
+    // Solicitar WakeLock para mantener pantalla encendida
+    if(document.getElementById('cfg-wake').checked && 'wakeLock' in navigator) {
+        try { wakeLock = await navigator.wakeLock.request('screen'); } catch(e) { console.log("WakeLock error", e); }
+    }
     try {
         const snap = await getDoc(doc(db,"routines",rid)); const r = snap.data();
         let lastWorkoutData = null; const q = query(collection(db, "workouts"), where("uid", "==", currentUser.uid)); const wSnap = await getDocs(q); const sameRoutine = wSnap.docs.map(d=>d.data()).filter(d => d.routine === r.name).sort((a,b) => b.date - a.date); if(sameRoutine.length > 0) lastWorkoutData = sameRoutine[0].details;
 
         const now = Date.now();
-        if(htmlAudioElement) { htmlAudioElement.play().then(() => { htmlAudioElement.pause(); }).catch(e => {}); } 
+        
+        // Inicializar Audio Engine (solo contexto)
+        initAudioEngine();
         
         activeWorkout = { name: r.name, startTime: now, exs: r.exercises.map(exObj => {
                 const isString = typeof exObj === 'string'; const name = isString ? exObj : exObj.n; const isSuperset = isString ? false : (exObj.s || false); const customSeriesNum = isString ? 5 : (parseInt(exObj.series) || 5); const customRepsPattern = isString ? "20-16-16-16-16" : (exObj.reps || "20-16-16-16-16"); const repsArray = customRepsPattern.split('-'); const data = getExerciseData(name);
@@ -1040,9 +1023,10 @@ function updateTimerVisuals(timeLeft) {
 
 function openRest() {
     window.openModal('modal-timer');
-    if(htmlAudioElement) {
-        htmlAudioElement.play().then(() => { if('mediaSession' in navigator) navigator.mediaSession.playbackState = "playing"; }).catch(e => console.log("Audio play blocked", e));
-    } else { initAudioEngine(); }
+    
+    // Inicializar AudioEngine (solo contexto)
+    initAudioEngine();
+    
     let duration = parseInt(userData.restTime) || 60;
     totalRestTime = duration; 
     restEndTime = Date.now() + (duration * 1000);
@@ -1058,9 +1042,6 @@ function openRest() {
         
         if (leftSec >= 0) { 
              updateTimerVisuals(leftSec);
-             if (leftSec !== lastBeepSecond) {
-                 updateMediaSessionMetadata(totalRestTime, totalRestTime - leftSec);
-             }
         } 
 
         if (leftSec <= 5 && leftSec > 0) {
@@ -1082,10 +1063,7 @@ function openRest() {
 
 window.closeTimer = () => {
     clearInterval(timerInt); window.closeModal('modal-timer');
-    if ('mediaSession' in navigator) {
-        navigator.mediaSession.metadata = new MediaMetadata({ title: '¡A entrenar!', artist: 'Fit Data Pro', artwork: [{ src: 'logo.png', sizes: '512x512', type: 'image/png' }] });
-        navigator.mediaSession.playbackState = "paused"; 
-    }
+    // MediaSession logic removed
 };
 
 window.addRestTime = (s) => { 
@@ -1094,7 +1072,6 @@ window.addRestTime = (s) => {
     const now = Date.now();
     const left = Math.ceil((restEndTime - now) / 1000);
     updateTimerVisuals(left);
-    updateMediaSessionMetadata(totalRestTime, totalRestTime - left);
 };
 
 function startTimerMini() { if(durationInt) clearInterval(durationInt); const d = document.getElementById('mini-timer'); if(!activeWorkout.startTime) activeWorkout.startTime = Date.now(); const startTime = activeWorkout.startTime; durationInt = setInterval(()=>{ const diff = Math.floor((Date.now() - startTime)/1000); const m = Math.floor(diff/60); const s = diff % 60; if(d) d.innerText = `${m}:${s.toString().padStart(2,'0')}`; }, 1000); }
@@ -1383,8 +1360,8 @@ window.viewWorkoutDetails = (routineName, detailsStr, noteStr) => {
             const sets = ex.s || [];
             
             html += `<div class="detail-exercise-card">
-                     <div class="detail-exercise-title">${name}</div>
-                     <div class="detail-sets-grid">`;
+                      <div class="detail-exercise-title">${name}</div>
+                      <div class="detail-sets-grid">`;
             
             if (sets.length > 0) {
                 sets.forEach((s, i) => {
