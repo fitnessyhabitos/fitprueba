@@ -4,7 +4,7 @@ import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, q
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 import { EXERCISES } from './data.js';
 
-console.log("⚡ FIT DATA: App Iniciada (v7.6 - Dropset Highlight)...");
+console.log("⚡ FIT DATA: App Iniciada (v7.7 - Smooth Audio)...");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDW40Lg6QvBc3zaaA58konqsH3QtDrRmyM",
@@ -169,7 +169,7 @@ window.toggleElement = (id) => {
     if(el) el.classList.toggle('hidden');
 };
 
-// --- AUDIO ENGINE (OPTIMIZADO SPOTIFY + ALARMA FINAL) ---
+// --- AUDIO ENGINE (OPTIMIZADO SPOTIFY + ALARMA SUAVE) ---
 let lastBeepSecond = -1; 
 
 function initAudioEngine() {
@@ -191,6 +191,7 @@ function playTickSound(isFinal = false) {
         return;
     }
 
+    // Beeps de cuenta atrás (agudos y cortos)
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     
@@ -209,11 +210,12 @@ function playTickSound(isFinal = false) {
     osc.stop(now + 0.1);
 }
 
-// Nueva función para la alarma final potente
+// Nueva alarma final: Acorde armónico "DING" (Menos agresivo)
 function playFinalAlarm() {
     if(!audioCtx) return;
     const now = audioCtx.currentTime;
 
+    // Dos osciladores para crear armonía (Ondas Sine = Suaves)
     const osc1 = audioCtx.createOscillator();
     const osc2 = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
@@ -222,27 +224,24 @@ function playFinalAlarm() {
     osc2.connect(gain);
     gain.connect(audioCtx.destination);
 
-    osc1.type = 'square'; 
-    osc2.type = 'sawtooth';
+    osc1.type = 'sine';
+    osc2.type = 'sine';
 
-    osc1.frequency.setValueAtTime(880, now); 
-    osc1.frequency.linearRampToValueAtTime(1760, now + 0.1); 
-    osc1.frequency.setValueAtTime(880, now + 0.2); 
-    osc1.frequency.linearRampToValueAtTime(1760, now + 0.3);
-    
-    osc2.frequency.setValueAtTime(440, now); 
-    osc2.frequency.linearRampToValueAtTime(880, now + 1.5); 
+    // Acorde Mayor Brillante (C6 + E6)
+    osc1.frequency.setValueAtTime(1046.50, now); // Nota Do alta
+    osc2.frequency.setValueAtTime(1318.51, now); // Nota Mi alta
 
-    gain.gain.setValueAtTime(0.8, now);
-    gain.gain.linearRampToValueAtTime(0.8, now + 1.0); 
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 1.5); 
+    // Envolvente de sonido tipo campana (Attack rápido, Decay largo)
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.8, now + 0.05); // Subida rápida
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 1.2); // Desvanecimiento lento
 
     osc1.start(now);
     osc2.start(now);
-    osc1.stop(now + 1.5);
-    osc2.stop(now + 1.5);
+    osc1.stop(now + 1.2);
+    osc2.stop(now + 1.2);
 
-    if("vibrate" in navigator) navigator.vibrate([200, 100, 200, 100, 500]);
+    if("vibrate" in navigator) navigator.vibrate([200, 100, 400]);
 }
 
 document.body.addEventListener('touchstart', initAudioEngine, {once:true});
