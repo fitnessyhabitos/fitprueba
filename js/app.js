@@ -4,7 +4,7 @@ import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, q
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 import { EXERCISES } from './data.js';
 
-console.log("⚡ FIT DATA: App Iniciada (v6.0 - Sistema de Avisos Coach)...");
+console.log("⚡ FIT DATA: App Iniciada (v6.1 - Avisos Persistentes)...");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDW40Lg6QvBc3zaaA58konqsH3QtDrRmyM",
@@ -40,7 +40,9 @@ let totalRestTime = 60;
 let restEndTime = 0; 
 let noteTargetIndex = null;
 let communityUnsubscribe = null; 
-let noticesUnsubscribe = null; // Listener de avisos
+
+// Sistema de Alertas - Estado
+let targetAlertUid = null; // 'all' o un UID específico
 
 // Filtros Ranking
 let rankFilterTime = 'all';      
@@ -65,112 +67,6 @@ let selectedPlanForMassAssign = null;
 let selectedRoutineForMassAssign = null;
 let assignMode = 'plan'; // 'plan' o 'routine'
 
-// --- SISTEMA DE AVISOS (NUEVO v6.0) ---
-
-// Inicia la escucha de avisos para el atleta
-function initNoticesListener() {
-    if (noticesUnsubscribe) noticesUnsubscribe();
-    if (!currentUser) return;
-
-    const routinesView = document.getElementById('routines-view');
-    let display = document.getElementById('notices-display-area');
-    if (!display) {
-        display = document.createElement('div');
-        display.id = 'notices-display-area';
-        display.style.marginBottom = '20px';
-        routinesView.prepend(display);
-    }
-
-    const q = query(collection(db, "notices"), where("active", "==", true), orderBy("createdAt", "desc"), limit(5));
-    
-    noticesUnsubscribe = onSnapshot(q, (snapshot) => {
-        display.innerHTML = '';
-        snapshot.forEach(docSnap => {
-            const n = docSnap.data();
-            const noticeId = docSnap.id;
-            
-            // Lógica: Mostrar si es global ('all') o si es para este UID
-            // Y no mostrar si el usuario ya lo marcó como leído (opcional)
-            const isRead = userData?.readNotices?.includes(noticeId);
-            if (!isRead && (n.target === 'all' || n.target === currentUser.uid)) {
-                const card = document.createElement('div');
-                card.className = 'card notice-item';
-                card.style.borderLeft = n.target === 'all' ? '4px solid var(--warning-color)' : '4px solid var(--success-color)';
-                
-                const imgHtml = n.image ? `<img src="${n.image}" style="width:100%; border-radius:8px; margin:10px 0; max-height:250px; object-fit:cover;" onclick="window.viewFullImage(this.src)">` : '';
-                const linkHtml = n.link ? `<button class="btn-small btn-outline" onclick="window.open('${n.link}', '_blank')" style="margin-top:10px; border-color:var(--accent-color); color:var(--accent-color);">🔗 VER ENLACE</button>` : '';
-                
-                card.innerHTML = `
-                    <div style="display:flex; justify-content:space-between; align-items:start;">
-                        <h4 style="color:white; margin:0;">${n.target === 'all' ? '📢' : '📩'} ${n.title}</h4>
-                        <button onclick="window.dismissNotice('${noticeId}')" style="background:none; border:none; color:#666; font-size:1.2rem;">✕</button>
-                    </div>
-                    <p style="color:#aaa; font-size:0.85rem; margin-top:10px; line-height:1.4;">${n.text}</p>
-                    ${imgHtml}
-                    ${linkHtml}
-                `;
-                display.appendChild(card);
-            }
-        });
-    });
-}
-
-window.dismissNotice = async (id) => {
-    try {
-        await updateDoc(doc(db, "users", currentUser.uid), {
-            readNotices: arrayUnion(id)
-        });
-        // Actualizar estado local para evitar recarga
-        if(!userData.readNotices) userData.readNotices = [];
-        userData.readNotices.push(id);
-    } catch(e) { console.error("Error dismiss:", e); }
-};
-
-window.publishNotice = async (target) => {
-    const titleId = target === 'all' ? 'adm-notice-title' : 'ind-notice-title';
-    const textId = target === 'all' ? 'adm-notice-text' : 'ind-notice-text';
-    const linkId = target === 'all' ? 'adm-notice-link' : 'ind-notice-link';
-    const fileId = target === 'all' ? 'adm-notice-file' : 'ind-notice-file';
-
-    const title = document.getElementById(titleId)?.value;
-    const text = document.getElementById(textId)?.value;
-    const link = document.getElementById(linkId)?.value;
-    const file = document.getElementById(fileId)?.files[0];
-
-    if (!title || !text) return alert("Título y texto obligatorios");
-
-    const btn = event.target;
-    btn.innerText = "⏳ PUBLICANDO...";
-    btn.disabled = true;
-
-    try {
-        let imageUrl = "";
-        if (file) {
-            const storageRef = ref(storage, `notices/${Date.now()}_${file.name}`);
-            const snap = await uploadBytes(storageRef, file);
-            imageUrl = await getDownloadURL(snap.ref);
-        }
-
-        await addDoc(collection(db, "notices"), {
-            title, text, link: link || "", image: imageUrl,
-            target: target, active: true, createdAt: serverTimestamp(),
-            createdBy: currentUser.uid
-        });
-
-        alert("✅ Aviso publicado.");
-        if(target === 'all') {
-            document.getElementById(titleId).value = "";
-            document.getElementById(textId).value = "";
-            document.getElementById(linkId).value = "";
-        } else {
-            openCoachView(selectedUserCoach, selectedUserObj);
-        }
-    } catch (e) { alert("Error: " + e.message); }
-    finally { btn.innerText = "PUBLICAR AVISO"; btn.disabled = false; }
-};
-
-// --- FIN SISTEMA DE AVISOS ---
-
 // --- FUNCIONES DE INYECCIÓN UI ---
 function injectTelegramUI() {
     const regForm = document.getElementById('register-form');
@@ -187,20 +83,42 @@ function injectTelegramUI() {
     const restInput = document.getElementById('cfg-rest-time');
     if (restInput && !document.getElementById('cfg-telegram')) {
         const wrapper = document.createElement('div');
-        wrapper.id = "tg-wrapper";
         wrapper.style.cssText = "width: 100%; margin-top: 25px; margin-bottom: 25px; text-align: center; border-top: 1px solid #222; padding-top: 15px;"; 
+        
         wrapper.innerHTML = `
             <label style="display:block; margin-bottom:8px; font-size:0.85rem; color:#aaa; font-weight:bold;">📸 Tu Usuario Telegram</label>
+            
             <input type="text" id="cfg-telegram" placeholder="@usuario" 
                 style="width: 70%; max-width: 250px; margin: 0 auto 15px auto; background: #111; border: 1px solid #444; color: white; padding: 10px; border-radius: 8px; text-align: center; display:block;">
+            
             <button onclick="window.contactCoach()" 
-                style="background: var(--accent-color); color: #000; border: none; padding: 10px 24px; border-radius: 50px; font-weight: bold; font-size: 0.9rem; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); transition: transform 0.1s;">
+                style="
+                    background: var(--accent-color); 
+                    color: #000; 
+                    border: none; 
+                    padding: 10px 24px; 
+                    border-radius: 50px; 
+                    font-weight: bold; 
+                    font-size: 0.9rem; 
+                    cursor: pointer; 
+                    display: inline-flex; 
+                    align-items: center; 
+                    justify-content: center;
+                    gap: 8px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+                    transition: transform 0.1s;
+                "
+                onmousedown="this.style.transform='scale(0.95)'"
+                onmouseup="this.style.transform='scale(1)'">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 11.944 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
                 Contactar Coach
             </button>
         `;
+        
         const parentContainer = restInput.parentElement; 
-        if (parentContainer) parentContainer.insertAdjacentElement('afterend', wrapper);
+        if (parentContainer) {
+            parentContainer.insertAdjacentElement('afterend', wrapper);
+        }
     }
 }
 
@@ -363,16 +281,19 @@ onAuthStateChanged(auth, async (user) => {
             userData = snap.data();
             checkPhotoVisualReminder();
             initCommunityListener();
-            initNoticesListener(); // Escuchar avisos
             checkPhotoReminder();
             injectTelegramUI();
             
             if(userData.role === 'admin' || userData.role === 'assistant') {
                 document.getElementById('top-btn-coach').classList.remove('hidden');
             }
-            if(userData.role !== 'admin' && userData.role !== 'assistant' && !sessionStorage.getItem('notif_dismissed')) {
-                const routinesSnap = await getDocs(query(collection(db, "routines"), where("assignedTo", "array-contains", user.uid)));
-                if(!routinesSnap.empty) document.getElementById('notif-badge').style.display = 'block';
+            if(userData.role !== 'admin' && userData.role !== 'assistant') {
+                // Si es atleta, carga sus avisos
+                loadAlertsForAthlete();
+                if (!sessionStorage.getItem('notif_dismissed')) {
+                    const routinesSnap = await getDocs(query(collection(db, "routines"), where("assignedTo", "array-contains", user.uid)));
+                    if(!routinesSnap.empty) document.getElementById('notif-badge').style.display = 'block';
+                }
             }
             if(userData.approved){
                 setTimeout(() => { document.getElementById('loading-screen').classList.add('hidden'); }, 1500); 
@@ -392,10 +313,144 @@ onAuthStateChanged(auth, async (user) => {
         switchTab('auth-view');
         document.getElementById('main-header').classList.add('hidden');
         if(communityUnsubscribe) communityUnsubscribe();
-        if(noticesUnsubscribe) noticesUnsubscribe();
         injectTelegramUI();
     }
 });
+
+// --- SISTEMA DE AVISOS (COACH) ---
+window.openAlertCreator = (targetUid, targetName) => {
+    targetAlertUid = targetUid; // 'all' o 'uid'
+    document.getElementById('alert-target-name').innerText = targetUid === 'all' ? "📢 AVISO GLOBAL (TODOS)" : `📢 AVISO PARA: ${targetName}`;
+    document.getElementById('alert-title').value = "";
+    document.getElementById('alert-body').value = "";
+    document.getElementById('alert-img').value = "";
+    document.getElementById('alert-link').value = "";
+    window.openModal('modal-alert-creator');
+};
+
+window.sendAlert = async () => {
+    const title = document.getElementById('alert-title').value.trim();
+    const body = document.getElementById('alert-body').value.trim();
+    const img = document.getElementById('alert-img').value.trim();
+    const link = document.getElementById('alert-link').value.trim();
+
+    if(!title || !body) return alert("❌ Título y mensaje obligatorios.");
+
+    const btn = document.getElementById('btn-send-alert');
+    btn.innerText = "ENVIANDO...";
+    btn.disabled = true;
+
+    try {
+        await addDoc(collection(db, "alerts"), {
+            targetUid: targetAlertUid, // 'all' o un uid específico
+            title: title,
+            body: body,
+            img: img || null,
+            link: link || null,
+            createdAt: serverTimestamp(),
+            createdBy: currentUser.uid,
+            active: true
+        });
+        showToast("✅ Aviso enviado correctamente");
+        window.closeModal('modal-alert-creator');
+    } catch(e) {
+        alert("Error al enviar aviso: " + e.message);
+    } finally {
+        btn.innerText = "🚀 ENVIAR AVISO";
+        btn.disabled = false;
+    }
+};
+
+// --- SISTEMA DE AVISOS (ATLETA - Persistente) ---
+window.dismissAlert = async (alertId) => {
+    if(!currentUser) return;
+    
+    // 1. UI Optimista: Eliminar visualmente al instante
+    const card = document.getElementById(`alert-card-${alertId}`);
+    if(card) {
+        card.style.opacity = '0';
+        setTimeout(() => card.remove(), 300); // Esperar animación CSS
+    }
+
+    // 2. Actualizar Local State para evitar recargas innecesarias
+    if(!userData.dismissedAlerts) userData.dismissedAlerts = [];
+    userData.dismissedAlerts.push(alertId);
+
+    // 3. Persistir en Firestore (Cross-Device)
+    try {
+        const userRef = doc(db, "users", currentUser.uid);
+        await updateDoc(userRef, {
+            dismissedAlerts: arrayUnion(alertId)
+        });
+        console.log("Aviso descartado:", alertId);
+    } catch(e) {
+        console.error("Error guardando el descarte:", e);
+    }
+};
+
+async function loadAlertsForAthlete() {
+    if(!currentUser) return;
+    const container = document.getElementById('athlete-alerts-container');
+    if(!container) return;
+    
+    try {
+        // 1. Alertas Globales
+        const qGlobal = query(collection(db, "alerts"), where("targetUid", "==", "all"), where("active", "==", true), orderBy("createdAt", "desc"), limit(5));
+        const snapGlobal = await getDocs(qGlobal);
+        
+        // 2. Alertas Personales
+        const qPersonal = query(collection(db, "alerts"), where("targetUid", "==", currentUser.uid), where("active", "==", true), orderBy("createdAt", "desc"), limit(5));
+        const snapPersonal = await getDocs(qPersonal);
+
+        let allAlerts = [...snapGlobal.docs, ...snapPersonal.docs].map(d => ({id:d.id, ...d.data()}));
+        
+        // 3. FILTRADO: Excluir las que el usuario ya ha cerrado
+        const dismissed = userData.dismissedAlerts || []; // Array de IDs cerrados
+        allAlerts = allAlerts.filter(alert => !dismissed.includes(alert.id));
+
+        // Ordenar por fecha descendente
+        allAlerts.sort((a,b) => {
+            const tA = a.createdAt ? a.createdAt.seconds : 0;
+            const tB = b.createdAt ? b.createdAt.seconds : 0;
+            return tB - tA;
+        });
+
+        container.innerHTML = "";
+        
+        if(allAlerts.length > 0) {
+            allAlerts.forEach(alert => {
+                const div = document.createElement('div');
+                div.className = "alert-card";
+                div.id = `alert-card-${alert.id}`; 
+                
+                let imgHtml = "";
+                if(alert.img) {
+                    imgHtml = `<div class="alert-img-wrapper"><img src="${alert.img}" onerror="this.style.display='none'"></div>`;
+                }
+                
+                let linkHtml = "";
+                if(alert.link) {
+                    linkHtml = `<a href="${alert.link}" target="_blank" class="btn-small btn-outline" style="display:inline-block; text-align:center; margin-top:10px; text-decoration:none; color:var(--accent-color); border-color:var(--accent-color);">🔗 ABRIR ENLACE</a>`;
+                }
+
+                // Botón X para cerrar
+                div.innerHTML = `
+                    <button class="btn-close-alert" onclick="window.dismissAlert('${alert.id}')">✕</button>
+                    ${imgHtml}
+                    <div class="alert-content">
+                        <h4 style="color:var(--accent-color); margin-bottom:5px; text-transform:uppercase; padding-right: 20px;">${alert.title}</h4>
+                        <p style="font-size:0.85rem; color:#ddd; line-height:1.4;">${alert.body}</p>
+                        ${linkHtml}
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+    } catch(e) {
+        console.error("Error cargando alertas", e);
+    }
+}
 
 function checkPhotoReminder() {
     if(!userData.photoDay) return;
@@ -425,7 +480,10 @@ window.switchTab = (t) => {
     document.getElementById(t).classList.add('active');
     document.getElementById('main-container').scrollTop = 0;
     document.querySelectorAll('.top-nav-item').forEach(n => n.classList.remove('active'));
-    if (t === 'routines-view') document.getElementById('top-btn-routines').classList.add('active');
+    if (t === 'routines-view') {
+        document.getElementById('top-btn-routines').classList.add('active');
+        if(userData.role !== 'admin') loadAlertsForAthlete(); 
+    }
     if (t === 'profile-view') {
         document.getElementById('top-btn-profile').classList.add('active');
         loadProfile();
@@ -507,11 +565,8 @@ window.filterExercises = (t) => {
     renderExercises(filtered); 
 };
 
-// --- CORE DEL CREADOR DE RUTINAS (AUTOSORT + INLINE EDIT) ---
 function renderExercises(l) {
     const c = document.getElementById('exercise-selector-list'); c.innerHTML = '';
-    
-    // Autosort: Seleccionados primero
     const sortedList = [...l].sort((a, b) => {
         const aSelected = currentRoutineSelections.some(x => x.n === a.n);
         const bSelected = currentRoutineSelections.some(x => x.n === b.n);
@@ -573,7 +628,6 @@ function renderExercises(l) {
     });
 }
 
-// --- LEYENDA SUPERIOR CON SCROLL ---
 window.renderSelectedSummary = () => {
     const div = document.getElementById('selected-summary'); 
     div.innerHTML = ''; 
@@ -620,15 +674,12 @@ window.removeSelection = (name) => {
     window.filterExercises(document.getElementById('ex-search').value); 
 }
 
-// --- GUARDADO LOGICO (LIBRERÍA vs PERSONAL) ---
 window.saveRoutine = async () => {
     const n = document.getElementById('editor-name').value; const s = window.currentRoutineSelections; 
     if(!n || s.length === 0) return alert("❌ Faltan datos");
     
     const btn = document.getElementById('btn-save-routine'); btn.innerText = "💾 GUARDANDO...";
     
-    // Si soy Admin, NO me la asigno (se queda en librería general).
-    // Si soy Atleta, me la asigno a mí mismo para verla.
     let initialAssignments = [];
     if (userData.role !== 'admin') {
         initialAssignments.push(currentUser.uid);
@@ -669,7 +720,7 @@ window.cloneRoutine = async (id) => {
             name: newName,
             uid: currentUser.uid, 
             createdAt: serverTimestamp(),
-            assignedTo: [] // Resetear asignaciones
+            assignedTo: [] 
         };
 
         await addDoc(collection(db, "routines"), copyData);
@@ -905,7 +956,6 @@ window.toggleAllSets = (exIdx) => { const ex = activeWorkout.exs[exIdx]; const a
 window.openNoteModal = (idx) => { noteTargetIndex = idx; const existingNote = activeWorkout.exs[idx].note || ""; document.getElementById('exercise-note-input').value = existingNote; window.openModal('modal-note'); };
 window.saveNote = () => { if (noteTargetIndex === null) return; const txt = document.getElementById('exercise-note-input').value.trim(); activeWorkout.exs[noteTargetIndex].note = txt; saveLocalWorkout(); renderWorkout(); window.closeModal('modal-note'); showToast(txt ? "📝 Nota guardada" : "🗑️ Nota borrada"); };
 
-// --- GESTIÓN DE RANKING ---
 window.toggleRankingOptIn = async (val) => { try { await updateDoc(doc(db, "users", currentUser.uid), { rankingOptIn: val }); userData.rankingOptIn = val; const btnRank = document.getElementById('top-btn-ranking'); if(val) btnRank.classList.remove('hidden'); else btnRank.classList.add('hidden'); showToast(val ? "🏆 Ahora participas en el Ranking" : "👻 Ranking desactivado"); } catch(e) { alert("Error actualizando perfil"); } };
 
 window.changeRankFilter = (type, val) => {
@@ -1131,7 +1181,20 @@ window.openProgress = async () => { const m = document.getElementById('modal-pro
 window.renderProgressChart = (exName) => { if (!exName || !window.tempHistoryCache) return; const ctx = document.getElementById('progressChart'); if (progressChart) progressChart.destroy(); const labels = []; const volumenData = []; const prData = []; const rmData = []; window.tempHistoryCache.forEach(w => { const exerciseData = w.details.find(d => d.n === exName); if (exerciseData) { let totalVolumenSesion = 0; let maxPesoSesion = 0; let bestRM = 0; exerciseData.s.forEach(set => { const weight = parseFloat(set.w) || 0; const reps = parseInt(set.r) || 0; totalVolumenSesion += (weight * reps); if (weight > maxPesoSesion) maxPesoSesion = weight; if (reps > 0 && weight > 0) { const currentRM = weight / (1.0278 - (0.0278 * reps)); if (currentRM > bestRM) bestRM = currentRM; } }); if (totalVolumenSesion > 0) { const dateObj = new Date(w.date.seconds * 1000); labels.push(dateObj.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })); volumenData.push(totalVolumenSesion); prData.push(maxPesoSesion); rmData.push(Math.round(bestRM)); } } }); progressChart = new Chart(ctx, { type: 'line', data: { labels: labels, datasets: [ { label: 'Volumen Total (Kg)', data: volumenData, borderColor: '#00ff88', backgroundColor: 'rgba(0, 255, 136, 0.1)', yAxisID: 'y', tension: 0.4, fill: true, pointRadius: 3 }, { label: '1RM Est. (Fuerza Real)', data: rmData, borderColor: '#ffaa00', yAxisID: 'y1', tension: 0.3, pointRadius: 4, borderWidth: 3 }, { label: 'PR Máximo (Kg)', data: prData, borderColor: '#ff3333', borderDash: [5, 5], yAxisID: 'y1', tension: 0.3, fill: false, pointRadius: 2 } ] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { type: 'linear', display: true, position: 'left', title: { display: true, text: 'Volumen (Kg)', color: '#00ff88' }, ticks: { color: '#888' }, grid: { color: '#333' } }, y1: { type: 'linear', display: true, position: 'right', title: { display: true, text: 'Fuerza / RM (Kg)', color: '#ffaa00' }, ticks: { color: '#888' }, grid: { drawOnChartArea: false } }, x: { ticks: { color: '#888' }, grid: { display: false } } }, plugins: { legend: { position: 'top', labels: { color: 'white', padding: 15, font: { size: 10 } } } } } }); };
 
 // --- ADMIN (USERS, LIB, PLANS) ---
-window.toggleAdminMode = (mode) => { document.getElementById('tab-users').classList.toggle('active', mode==='users'); document.getElementById('tab-lib').classList.toggle('active', mode==='lib'); document.getElementById('tab-plans').classList.toggle('active', mode==='plans'); document.getElementById('admin-users-card').classList.toggle('hidden', mode!=='users'); document.getElementById('admin-lib-card').classList.toggle('hidden', mode!=='lib'); document.getElementById('admin-plans-card').classList.toggle('hidden', mode!=='plans'); if(mode==='users') window.loadAdminUsers(); if(mode==='lib') window.loadAdminLibrary(); if(mode==='plans') window.loadAdminPlans(); };
+window.toggleAdminMode = (mode) => { 
+    document.getElementById('tab-users').classList.toggle('active', mode==='users'); 
+    document.getElementById('tab-lib').classList.toggle('active', mode==='lib'); 
+    document.getElementById('tab-plans').classList.toggle('active', mode==='plans'); 
+    document.getElementById('admin-users-card').classList.toggle('hidden', mode!=='users'); 
+    document.getElementById('admin-lib-card').classList.toggle('hidden', mode!=='lib'); 
+    document.getElementById('admin-plans-card').classList.toggle('hidden', mode!=='plans'); 
+    // Mostrar botón global solo en users
+    document.getElementById('btn-global-alert').classList.toggle('hidden', mode!=='users');
+    
+    if(mode==='users') window.loadAdminUsers(); 
+    if(mode==='lib') window.loadAdminLibrary(); 
+    if(mode==='plans') window.loadAdminPlans(); 
+};
 
 window.loadAdminUsers = async () => {
     const l = document.getElementById('admin-list'); l.innerHTML = '↻ Cargando...';
@@ -1145,23 +1208,6 @@ window.loadAdminUsers = async () => {
             const dateB = b.lastWorkoutDate ? b.lastWorkoutDate.seconds : 0;
             return dateB - dateA;
         });
-
-        // --- INYECCIÓN DEL SISTEMA DE AVISO GLOBAL ---
-        const globalNoticeDiv = document.createElement('div');
-        globalNoticeDiv.className = 'card';
-        globalNoticeDiv.style.borderLeft = '4px solid var(--warning-color)';
-        globalNoticeDiv.innerHTML = `
-            <h3 style="color:var(--warning-color); font-size:0.9rem; margin-bottom:10px;">📢 NUEVO AVISO GLOBAL (TODOS)</h3>
-            <input type="text" id="adm-notice-title" placeholder="Título del aviso..." style="margin-bottom:8px;">
-            <textarea id="adm-notice-text" placeholder="Mensaje..." rows="2" style="margin-bottom:8px;"></textarea>
-            <input type="text" id="adm-notice-link" placeholder="Link opcional" style="margin-bottom:8px;">
-            <input type="file" id="adm-notice-file" class="hidden" accept="image/*">
-            <div style="display:flex; gap:10px; margin-bottom:10px;">
-                <button class="btn-small btn-outline" onclick="document.getElementById('adm-notice-file').click()" style="flex:1;">📷 IMAGEN</button>
-                <button class="btn-small btn" onclick="window.publishNotice('all')" style="flex:1; background:var(--warning-color); color:black;">PUBLICAR</button>
-            </div>
-        `;
-        l.appendChild(globalNoticeDiv);
 
         usersList.forEach(u => {
             const avatarHtml = u.photo ? `<img src="${u.photo}" class="mini-avatar">` : `<div class="mini-avatar-placeholder">${u.name.charAt(0).toUpperCase()}</div>`;
@@ -1179,10 +1225,23 @@ window.loadAdminUsers = async () => {
                     activeStatus = `<span style="color:#00ff88; font-size:0.75rem; margin-left:6px; font-weight:bold; background:rgba(0,255,136,0.1); padding:2px 5px; border-radius:4px;">🟢 ${timeStr}</span>`;
                 }
             }
+            
+            // Botón de Alerta Individual
+            const btnAlert = `<button class="btn-outline btn-small" style="margin:0; border-color:#ffaa00; color:#ffaa00; margin-right:5px;" onclick="event.stopPropagation(); window.openAlertCreator('${u.id}', '${u.name}')">📢</button>`;
 
             const div = document.createElement('div'); 
             div.className = rowClass;
-            div.innerHTML=`${avatarHtml}<div style="overflow:hidden;"><div style="font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:white; display:flex; align-items:center;">${u.name} ${u.role === 'assistant' ? '🛡️' : ''} ${activeStatus}</div><div style="font-size:0.75rem; color:#888; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${u.email}</div></div><button class="btn-outline btn-small" style="margin:0; border-color:#444; color:#ccc;">⚙️</button>`;
+            div.innerHTML=`
+                ${avatarHtml}
+                <div style="overflow:hidden;">
+                    <div style="font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:white; display:flex; align-items:center;">${u.name} ${u.role === 'assistant' ? '🛡️' : ''} ${activeStatus}</div>
+                    <div style="font-size:0.75rem; color:#888; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${u.email}</div>
+                </div>
+                <div style="display:flex; justify-content:flex-end; align-items:center;">
+                    ${btnAlert}
+                    <button class="btn-outline btn-small" style="margin:0; border-color:#444; color:#ccc;">⚙️</button>
+                </div>
+            `;
             div.onclick = () => openCoachView(u.id, u); 
             l.appendChild(div);
         });
@@ -1365,30 +1424,6 @@ async function openCoachView(uid, u) {
     document.getElementById('coach-toggle-bio').checked = !!freshU.showBio; document.getElementById('coach-toggle-skinfolds').checked = !!freshU.showSkinfolds; document.getElementById('coach-toggle-measures').checked = !!freshU.showMeasurements; document.getElementById('coach-toggle-videos').checked = !!freshU.showVideos;
     const dietSel = document.getElementById('coach-diet-select'); dietSel.innerHTML = '<option value="">-- Sin Dieta --</option>';
     AVAILABLE_DIETS.forEach(d => { const opt = new Option(d.name, d.file); if(freshU.dietFile === d.file) opt.selected = true; dietSel.appendChild(opt); });
-    
-    // --- INYECCIÓN DEL SISTEMA DE AVISO INDIVIDUAL ---
-    const detailContainer = document.getElementById('coach-detail-view');
-    const existingIndNotice = document.getElementById('ind-notice-card');
-    if(existingIndNotice) existingIndNotice.remove();
-    
-    const indNoticeDiv = document.createElement('div');
-    indNoticeDiv.id = 'ind-notice-card';
-    indNoticeDiv.className = 'card';
-    indNoticeDiv.style.borderLeft = '4px solid var(--success-color)';
-    indNoticeDiv.innerHTML = `
-        <h3 style="color:var(--success-color); font-size:0.9rem; margin-bottom:10px;">✉️ ENVIAR AVISO PERSONAL (SOLO A ÉL)</h3>
-        <input type="text" id="ind-notice-title" placeholder="Título...">
-        <textarea id="ind-notice-text" placeholder="Mensaje personal..." rows="2"></textarea>
-        <input type="text" id="ind-notice-link" placeholder="Link opcional">
-        <input type="file" id="ind-notice-file" class="hidden" accept="image/*">
-        <div style="display:flex; gap:10px; margin-top:10px;">
-            <button class="btn-small btn-outline" onclick="document.getElementById('ind-notice-file').click()" style="flex:1;">📷 IMAGEN</button>
-            <button class="btn-small btn" onclick="window.publishNotice('${uid}')" style="flex:1; background:var(--success-color); color:black;">ENVIAR</button>
-        </div>
-    `;
-    const statsContainer = document.getElementById('coach-stats-text');
-    detailContainer.insertBefore(indNoticeDiv, statsContainer);
-
     const rList = document.getElementById('coach-assigned-list'); rList.innerHTML = 'Cargando...';
     const allRoutinesSnap = await getDocs(collection(db, "routines")); allRoutinesCache = [];
     const s = document.getElementById('coach-routine-select'); s.innerHTML = '<option value="">Selecciona rutina...</option>';
@@ -1463,7 +1498,7 @@ document.getElementById('btn-register').onclick=async()=>{
             telegram: tgUser, 
             approved: false, role: 'athlete', 
             gender:document.getElementById('reg-gender').value, age:parseInt(document.getElementById('reg-age').value), height:parseInt(document.getElementById('reg-height').value), 
-            weightHistory: [], measureHistory: [], skinfoldHistory: [], bioHistory: [], prs: {}, stats: {workouts:0, totalKg:0, totalSets:0, totalReps:0}, muscleStats: {}, joined: serverTimestamp(), showVideos: false, showBio: false, readNotices: []
+            weightHistory: [], measureHistory: [], skinfoldHistory: [], bioHistory: [], prs: {}, stats: {workouts:0, totalKg:0, totalSets:0, totalReps:0}, muscleStats: {}, joined: serverTimestamp(), showVideos: false, showBio: false
         });
     }catch(e){alert("Error: " + e.message);}
 };
