@@ -4,7 +4,7 @@ import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, q
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 import { EXERCISES } from './data.js';
 
-console.log("⚡ FIT DATA: App Iniciada (v6.0 - Sistema Avisos Coach)...");
+console.log("⚡ FIT DATA: App Iniciada (v6.1 - Fix History Viewer)...");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDW40Lg6QvBc3zaaA58konqsH3QtDrRmyM",
@@ -325,7 +325,7 @@ window.deleteNotice = async () => {
         if(noticeTargetUid === 'GLOBAL') {
              await deleteDoc(doc(db, "settings", "globalNotice"));
         } else {
-             await updateDoc(doc(db, "users", noticeTargetUid), { coachNotice: deleteField() }); // Necesitaríamos importar deleteField, uso null temporalmente
+             // updateDoc con coachNotice: deleteField() sería lo ideal, pero uso null por compatibilidad simple
              await updateDoc(doc(db, "users", noticeTargetUid), { coachNotice: null });
         }
         alert("🗑️ Aviso eliminado");
@@ -1368,6 +1368,45 @@ window.viewRoutineContent = (name, dataStr) => {
     let html = `<ul style="padding-left:20px; margin-top:10px;">`; exs.forEach(e => html += `<li style="margin-bottom:5px;">${e}</li>`); html += `</ul>`;
     document.getElementById('detail-title').innerText = name; document.getElementById('detail-content').innerHTML = html; 
     window.openModal('modal-details');
+};
+
+// --- FUNCIÓN QUE FALTABA PARA VER DETALLES DE HISTORIAL ---
+window.viewWorkoutDetails = (routineName, detailsStr, noteStr) => {
+    try {
+        const details = JSON.parse(decodeURIComponent(detailsStr));
+        const note = decodeURIComponent(noteStr || "");
+        
+        let html = '';
+        if (note) {
+            html += `<div class="note-display">📝 <b>Nota:</b> ${note}</div>`;
+        }
+        
+        details.forEach(ex => {
+            const name = ex.n || ex; 
+            const sets = ex.s || [];
+            
+            html += `<div style="margin-bottom:15px; border-bottom:1px solid #333; padding-bottom:10px;">`;
+            html += `<div style="font-weight:bold; color:var(--accent-color); margin-bottom:5px;">${name}</div>`;
+            
+            if (sets.length > 0) {
+                html += `<div style="display:grid; grid-template-columns: 20px 1fr 1fr; gap:5px; font-size:0.8rem; color:#888;"><div>#</div><div>Kg</div><div>Reps</div></div>`;
+                sets.forEach((s, i) => {
+                    const num = s.numDisplay || (i + 1);
+                    const w = s.w || 0;
+                    const r = s.r || 0;
+                    const isDrop = s.isDrop ? '<span style="color:var(--warning-color)">(DROP)</span>' : '';
+                    html += `<div style="display:grid; grid-template-columns: 20px 1fr 1fr; gap:5px; font-size:0.8rem; margin-top:3px; color:#ddd;"><div>${num}</div><div>${w}</div><div>${r} ${isDrop}</div></div>`;
+                });
+            } else {
+                html += `<div style="font-size:0.7rem; color:#666;">Sin datos de series.</div>`;
+            }
+            html += `</div>`;
+        });
+        
+        document.getElementById('detail-title').innerText = routineName;
+        document.getElementById('detail-content').innerHTML = html;
+        window.openModal('modal-details');
+    } catch (e) { console.error("Error visualizando detalles:", e); alert("Error al cargar los detalles del entreno."); }
 };
 
 window.openVideo = (url) => { if (!url) return; let embedUrl = url.includes("watch?v=") ? url.replace("watch?v=", "embed/") : url.replace("youtu.be/", "youtube.com/embed/"); document.getElementById('youtube-frame').src = embedUrl + "?autoplay=1&rel=0"; window.openModal('modal-video'); };
