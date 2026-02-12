@@ -1376,10 +1376,8 @@ window.viewWorkoutDetails = (routineName, detailsStr, noteStr) => {
         const details = JSON.parse(decodeURIComponent(detailsStr));
         const note = decodeURIComponent(noteStr || "");
         
-        // 1. Renderizar la Nota (si existe o "Sin notas")
-        let html = `<div class="detail-note-box">📝 <b>Nota:</b> ${note || "Sin notas."}</div>`;
+        let html = `<div class="detail-note-box">📝 ${note || "Sin notas."}</div>`;
         
-        // 2. Renderizar cada ejercicio
         details.forEach(ex => {
             const name = ex.n || ex; 
             const sets = ex.s || [];
@@ -1389,37 +1387,30 @@ window.viewWorkoutDetails = (routineName, detailsStr, noteStr) => {
                      <div class="detail-sets-grid">`;
             
             if (sets.length > 0) {
-                // 3. Renderizar las cajitas de series
                 sets.forEach((s, i) => {
                     const num = s.numDisplay || (i + 1);
-                    const w = s.w || 0; // Peso
-                    const r = s.r || 0; // Repes
+                    const w = s.w || 0;
+                    const r = s.r || 0;
+                    const isDrop = s.isDrop ? '<span style="color:var(--warning-color);margin-left:2px">💧</span>' : '';
                     
-                    // Icono de gota si es Dropset
-                    const isDrop = s.isDrop ? '<span style="color:var(--warning-color)">💧</span>' : '';
-                    
-                    // Formato: #1 20x42.5k
+                    // FORMATO UNA LINEA: #1 12x50k
                     html += `<div class="detail-set-badge">
                                 <span class="detail-set-num">#${num}</span>
-                                <b>${r}</b>x${w}k ${isDrop}
+                                <span><b>${r}</b> <span style="color:#666">x</span> ${w}k</span>
+                                ${isDrop}
                              </div>`;
                 });
             } else { 
-                html += `<div style="font-size:0.7rem; color:#666; grid-column: 1/-1;">Sin datos.</div>`; 
+                html += `<div style="font-size:0.7rem; color:#666;">Sin datos.</div>`; 
             }
             
-            html += `</div></div>`; // Cierre grid y card
+            html += `</div></div>`; 
         });
         
-        // Inyectar en el Modal
-        document.getElementById('detail-title').innerText = routineName; // Título Rutina (ej: Piernas)
+        document.getElementById('detail-title').innerText = routineName;
         document.getElementById('detail-content').innerHTML = html;
-        
         window.openModal('modal-details');
-    } catch (e) { 
-        console.error("Error visualizando detalles:", e); 
-        alert("Error al cargar los detalles del entreno."); 
-    }
+    } catch (e) { console.error(e); alert("Error cargando detalles."); }
 };
 window.openVideo = (url) => { if (!url) return; let embedUrl = url.includes("watch?v=") ? url.replace("watch?v=", "embed/") : url.replace("youtu.be/", "youtube.com/embed/"); document.getElementById('youtube-frame').src = embedUrl + "?autoplay=1&rel=0"; window.openModal('modal-video'); };
 window.closeVideo = () => { window.closeModal('modal-video'); document.getElementById('youtube-frame').src = ""; };
