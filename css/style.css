@@ -338,7 +338,7 @@ input:checked + .slider { background-color: var(--accent-color); } input:checked
 /* 1. Lista de Atletas Compacta */
 .admin-user-row {
     display: grid;
-    grid-template-columns: 45px 1fr 40px; /* Avatar | Info | Botón */
+    grid-template-columns: 45px 1fr 90px; /* Ajustado para acomodar los botones */
     gap: 12px;
     padding: 12px;
     align-items: center;
@@ -429,40 +429,4 @@ input:checked + .slider { background-color: var(--accent-color); } input:checked
 }
 .rank-value-highlight {
     font-family: monospace; font-size: 1.1rem; font-weight: bold; color: var(--success-color);
-}
-
-/* Animación para los avisos del sistema */
-.notice-card-animate {
-    animation: noticeIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
-}
-
-@keyframes noticeIn {
-    from { transform: translateY(-20px); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
-}
-
-/* Soporte para imágenes en avisos */
-#athlete-notices-display img {
-    transition: transform 0.2s;
-}
-
-#athlete-notices-display img:active {
-    transform: scale(0.98);
-}
-
-/* Fila de usuario en Admin */
-.admin-user-row {
-    display: grid;
-    grid-template-columns: 45px 1fr auto; /* Avatar | Texto | Botones */
-    gap: 12px;
-    padding: 12px;
-    align-items: center;
-    border-bottom: 1px solid #222;
-    background: #121212;
-    margin-bottom: 2px;
-}
-
-/* El botón de aviso individual (sobre el fondo oscuro) */
-.btn-outline[onclick*="openNoticeModal"] {
-    background: rgba(0, 255, 136, 0.05);
 }
