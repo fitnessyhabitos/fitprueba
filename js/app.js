@@ -4,7 +4,7 @@ import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, q
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 import { EXERCISES } from './data.js';
 
-console.log("⚡ FIT DATA: App Iniciada (v7.0 - Spotify Friendly)...");
+console.log("⚡ FIT DATA: App Iniciada (v7.5 - Audio Boost & Smart Notices)...");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDW40Lg6QvBc3zaaA58konqsH3QtDrRmyM",
@@ -41,6 +41,10 @@ let restEndTime = 0;
 let noteTargetIndex = null;
 let communityUnsubscribe = null; 
 
+// Variables para control de avisos
+let currentNoticeId = null; // ID del aviso que se está mostrando actualmente
+let currentNoticeType = null; // 'GLOBAL' o 'INDIVIDUAL'
+
 // Filtros Ranking
 let rankFilterTime = 'all';       
 let rankFilterGender = 'all';    
@@ -64,8 +68,8 @@ let selectedPlanForMassAssign = null;
 let selectedRoutineForMassAssign = null;
 let assignMode = 'plan'; // 'plan' o 'routine'
 
-// Variable para Sistema de Avisos
-let noticeTargetUid = null; // null = global, string = uid especifico
+// Variable para Sistema de Avisos (Admin)
+let noticeTargetUid = null; 
 
 // --- FUNCIONES DE INYECCIÓN UI ---
 function injectTelegramUI() {
@@ -166,38 +170,35 @@ window.toggleElement = (id) => {
     if(el) el.classList.toggle('hidden');
 };
 
-// --- AUDIO ENGINE (OPTIMIZADO SPOTIFY) ---
-// Se ha eliminado el loop de audio silencioso para no pausar Spotify.
+// --- AUDIO ENGINE (OPTIMIZADO SPOTIFY + ALARMA FINAL) ---
 let lastBeepSecond = -1; 
 
 function initAudioEngine() {
-    // Solo inicializamos el AudioContext para los beeps.
     if (!audioCtx) {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         audioCtx = new AudioContext();
     }
-    // Asegurar que el contexto está activo
     if (audioCtx.state === 'suspended') {
         audioCtx.resume();
     }
-    // NOTA: Ya no usamos htmlAudioElement.play() para no robar el foco de audio
-}
-
-// Función vacía para compatibilidad
-function updateMediaSessionMetadata(duration, position) {
-    // Desactivado para no interrumpir Spotify
 }
 
 function playTickSound(isFinal = false) {
     if(!audioCtx) return;
     if (audioCtx.state === 'suspended') audioCtx.resume();
 
+    // Si es final, usamos la función de alarma larga
+    if (isFinal) {
+        playFinalAlarm();
+        return;
+    }
+
+    // Beeps normales de cuenta atrás
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     
-    // Frecuencias más altas para cortar sobre la música
-    osc.frequency.value = isFinal ? 880 : 1200; 
-    osc.type = isFinal ? 'square' : 'sine';
+    osc.frequency.value = 1000; // Tono agudo estándar
+    osc.type = 'sine';
     
     osc.connect(gain);
     gain.connect(audioCtx.destination);
@@ -205,20 +206,57 @@ function playTickSound(isFinal = false) {
     const now = audioCtx.currentTime;
     osc.start(now);
     
-    const duration = isFinal ? 0.6 : 0.08;
-    
-    // Volumen ajustado para oirse con música de fondo
+    // Beep muy corto
     gain.gain.setValueAtTime(0.8, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
-    osc.stop(now + duration);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
     
-    if("vibrate" in navigator) navigator.vibrate(isFinal ? [500] : [50]);
+    osc.stop(now + 0.1);
+}
+
+// Nueva función para la alarma final potente
+function playFinalAlarm() {
+    if(!audioCtx) return;
+    const now = audioCtx.currentTime;
+
+    // Creamos 3 osciladores para un acorde/secuencia disonante y llamativa
+    const osc1 = audioCtx.createOscillator();
+    const osc2 = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    osc1.connect(gain);
+    osc2.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    // Configuración tipo "Alarma Nuclear" o "Silbato"
+    osc1.type = 'square'; // Sonido "áspero" para cortar la música
+    osc2.type = 'sawtooth';
+
+    // Secuencia de frecuencias
+    osc1.frequency.setValueAtTime(880, now); // La
+    osc1.frequency.linearRampToValueAtTime(1760, now + 0.1); // Slide arriba
+    osc1.frequency.setValueAtTime(880, now + 0.2); 
+    osc1.frequency.linearRampToValueAtTime(1760, now + 0.3);
+    
+    osc2.frequency.setValueAtTime(440, now); // Octava abajo de base
+    osc2.frequency.linearRampToValueAtTime(880, now + 1.5); // Slide largo
+
+    // Volumen alto y sostenido
+    gain.gain.setValueAtTime(0.8, now);
+    gain.gain.linearRampToValueAtTime(0.8, now + 1.0); // Mantener volumen
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 1.5); // Fade out final
+
+    osc1.start(now);
+    osc2.start(now);
+    osc1.stop(now + 1.5);
+    osc2.stop(now + 1.5);
+
+    if("vibrate" in navigator) navigator.vibrate([200, 100, 200, 100, 500]);
 }
 
 document.body.addEventListener('touchstart', initAudioEngine, {once:true});
 document.body.addEventListener('click', initAudioEngine, {once:true});
 
-window.testSound = () => { playTickSound(false); setTimeout(() => playTickSound(true), 500); };
+window.testSound = () => { playTickSound(false); setTimeout(() => playFinalAlarm(), 600); };
 
 window.enableNotifications = () => {
     if (!("Notification" in window)) return alert("Tu dispositivo no soporta notificaciones.");
@@ -231,19 +269,18 @@ window.enableNotifications = () => {
     });
 };
 
-// --- GESTIÓN DE AVISOS (COACH) ---
+// --- GESTIÓN DE AVISOS (COACH - SUBIDA DE IMAGEN + TEXTO) ---
 window.openNoticeEditor = async (uid) => {
-    noticeTargetUid = uid; // 'GLOBAL' o uid real
+    noticeTargetUid = uid; 
     document.getElementById('notice-title').value = '';
     document.getElementById('notice-text').value = '';
-    document.getElementById('notice-img').value = '';
+    document.getElementById('notice-img-file').value = ''; // Reset file input
     document.getElementById('notice-link').value = '';
     
-    // Título del Modal
     const modalTitle = document.getElementById('notice-modal-title');
     modalTitle.innerText = uid === 'GLOBAL' ? '📢 CREAR AVISO PARA TODOS' : '📢 AVISO INDIVIDUAL';
     
-    // Intentar cargar aviso existente
+    // Intentar cargar aviso existente para editar (solo texto/título, la imagen se sobreescribe si se sube otra)
     try {
         let existing = null;
         if(uid === 'GLOBAL') {
@@ -257,7 +294,6 @@ window.openNoticeEditor = async (uid) => {
         if(existing) {
             document.getElementById('notice-title').value = existing.title || '';
             document.getElementById('notice-text').value = existing.text || '';
-            document.getElementById('notice-img').value = existing.img || '';
             document.getElementById('notice-link').value = existing.link || '';
         }
     } catch(e) { console.error(e); }
@@ -268,33 +304,65 @@ window.openNoticeEditor = async (uid) => {
 window.saveNotice = async () => {
     const t = document.getElementById('notice-title').value;
     const txt = document.getElementById('notice-text').value;
-    const img = document.getElementById('notice-img').value;
     const lnk = document.getElementById('notice-link').value;
+    const fileInp = document.getElementById('notice-img-file');
     
     if(!t || !txt) return alert("El título y el texto son obligatorios.");
     
-    const noticeData = {
-        title: t, text: txt, img: img, link: lnk,
-        date: new Date().toISOString(), active: true
-    };
-    
     const btn = document.getElementById('btn-save-notice');
-    btn.innerText = "GUARDANDO...";
+    btn.innerText = "SUBIENDO...";
+    btn.disabled = true;
     
     try {
+        let imgUrl = "";
+        
+        // 1. Si hay archivo, subirlo a Storage
+        if(fileInp.files.length > 0) {
+            const file = fileInp.files[0];
+            // Ruta: notices/global/timestamp.jpg o notices/UID/timestamp.jpg
+            const path = `notices/${noticeTargetUid === 'GLOBAL' ? 'global' : noticeTargetUid}/${Date.now()}.jpg`;
+            const storageRef = ref(storage, path);
+            const snapshot = await uploadBytes(storageRef, file);
+            imgUrl = await getDownloadURL(snapshot.ref);
+        } else {
+            // Si no hay archivo nuevo, intentar mantener el anterior (recuperando de DB)
+             if(noticeTargetUid === 'GLOBAL') {
+                 const snap = await getDoc(doc(db, "settings", "globalNotice"));
+                 if(snap.exists()) imgUrl = snap.data().img || "";
+             } else {
+                 const snap = await getDoc(doc(db, "users", noticeTargetUid));
+                 if(snap.exists() && snap.data().coachNotice) imgUrl = snap.data().coachNotice.img || "";
+             }
+        }
+
+        // ID único para el aviso (usamos timestamp)
+        const noticeId = Date.now().toString();
+
+        const noticeData = {
+            id: noticeId, // ID vital para saber si ya se leyó
+            title: t, 
+            text: txt, 
+            img: imgUrl, 
+            link: lnk,
+            date: new Date().toISOString(), 
+            active: true
+        };
+        
         if(noticeTargetUid === 'GLOBAL') {
             await setDoc(doc(db, "settings", "globalNotice"), noticeData);
             alert("✅ Aviso Global Publicado");
         } else {
-            // Guardar en el documento del usuario para acceso rápido
+            // Guardar en el usuario
             await updateDoc(doc(db, "users", noticeTargetUid), { coachNotice: noticeData });
             alert("✅ Aviso Individual Enviado");
-            // Refrescar lista si estamos en admin
             if(document.getElementById('tab-users').classList.contains('active')) window.loadAdminUsers();
         }
         window.closeModal('modal-notice-editor');
     } catch(e) { alert("Error: " + e.message); }
-    finally { btn.innerText = "PUBLICAR AVISO"; }
+    finally { 
+        btn.innerText = "PUBLICAR AVISO"; 
+        btn.disabled = false;
+    }
 };
 
 window.deleteNotice = async () => {
@@ -303,7 +371,6 @@ window.deleteNotice = async () => {
         if(noticeTargetUid === 'GLOBAL') {
              await deleteDoc(doc(db, "settings", "globalNotice"));
         } else {
-             // updateDoc con coachNotice: deleteField() sería lo ideal, pero uso null por compatibilidad simple
              await updateDoc(doc(db, "users", noticeTargetUid), { coachNotice: null });
         }
         alert("🗑️ Aviso eliminado");
@@ -312,14 +379,13 @@ window.deleteNotice = async () => {
     } catch(e) { alert("Error: " + e.message); }
 };
 
-// --- GESTIÓN DE AVISOS (ATLETA) ---
+// --- GESTIÓN DE AVISOS (ATLETA - SISTEMA ENTENDIDO) ---
 async function checkNotices() {
     if(userData.role === 'admin' || userData.role === 'assistant') return;
     
-    // 1. Revisar aviso individual (ya cargado en userData)
+    // 1. Revisar aviso individual
     if(userData.coachNotice && userData.coachNotice.active) {
-        showNoticeModal(userData.coachNotice, "MENSAJE DEL COACH");
-        // Opcional: Marcar como visto si se requiere
+        showNoticeModal(userData.coachNotice, "MENSAJE DEL COACH", 'INDIVIDUAL');
         return; 
     }
     
@@ -328,17 +394,23 @@ async function checkNotices() {
         const snap = await getDoc(doc(db, "settings", "globalNotice"));
         if(snap.exists()) {
             const notice = snap.data();
-            // Comprobación simple de fecha o ID para no mostrar siempre
-            const lastSeen = localStorage.getItem('last_global_notice_date');
-            if(notice.active && notice.date !== lastSeen) {
-                showNoticeModal(notice, "AVISO DE LA COMUNIDAD");
-                localStorage.setItem('last_global_notice_date', notice.date);
+            if(!notice.active) return;
+
+            // Verificar si ya se ha dado a "Entendido" a ESTE aviso concreto (por ID)
+            const dismissedId = localStorage.getItem('dismissed_global_notice_id');
+            
+            // Si el ID del aviso actual es diferente al guardado, lo mostramos
+            if(notice.id && notice.id !== dismissedId) {
+                showNoticeModal(notice, "AVISO DE LA COMUNIDAD", 'GLOBAL');
             }
         }
     } catch(e) {}
 }
 
-function showNoticeModal(notice, headerTitle) {
+function showNoticeModal(notice, headerTitle, type) {
+    currentNoticeId = notice.id;
+    currentNoticeType = type;
+
     document.getElementById('viewer-header').innerText = headerTitle;
     document.getElementById('viewer-title').innerText = notice.title;
     document.getElementById('viewer-text').innerText = notice.text;
@@ -347,6 +419,8 @@ function showNoticeModal(notice, headerTitle) {
     if(notice.img) {
         imgEl.src = notice.img;
         imgEl.classList.remove('hidden');
+        // Habilitar click para ver en grande
+        imgEl.onclick = () => window.viewFullImage(notice.img);
     } else {
         imgEl.classList.add('hidden');
     }
@@ -362,6 +436,25 @@ function showNoticeModal(notice, headerTitle) {
     window.openModal('modal-notice-viewer');
 }
 
+window.dismissNotice = async () => {
+    // Lógica para no volver a mostrar
+    if (currentNoticeType === 'GLOBAL') {
+        // Guardamos el ID en local para no volver a verlo
+        if(currentNoticeId) {
+            localStorage.setItem('dismissed_global_notice_id', currentNoticeId);
+        }
+    } else if (currentNoticeType === 'INDIVIDUAL') {
+        // Desactivamos el aviso en la DB del usuario
+        try {
+            await updateDoc(doc(db, "users", currentUser.uid), { "coachNotice.active": false });
+            // Actualizamos localmente para que no salte si no recargamos
+            if(userData.coachNotice) userData.coachNotice.active = false;
+        } catch(e) { console.error("Error dismiss individual", e); }
+    }
+    
+    window.closeModal('modal-notice-viewer');
+};
+
 
 onAuthStateChanged(auth, async (user) => {
     if(user) {
@@ -373,7 +466,7 @@ onAuthStateChanged(auth, async (user) => {
             initCommunityListener();
             checkPhotoReminder();
             injectTelegramUI();
-            checkNotices(); // Verificar avisos al entrar
+            checkNotices(); 
             
             if(userData.role === 'admin' || userData.role === 'assistant') {
                 document.getElementById('top-btn-coach').classList.remove('hidden');
@@ -815,7 +908,7 @@ window.loadProfile = async () => {
             if(fatChartInstance) fatChartInstance.destroy();
             const dataF = userData.skinfoldHistory.map(f => f.fat || 0);
             const labels = userData.skinfoldHistory.map(f => new Date(f.date.seconds*1000).toLocaleDateString());
-            fatChartInstance = new Chart(ctxF, { type: 'line', data: { labels: labels, datasets: [{ label: '% Grasa', data: dataF, borderColor: '#ffaa00', tension: 0.3 }] }, options: { plugins: { legend: { display: false } }, scales: { y: { grid: { color: '#333' } }, x: { display: false } }, maintainAspectRatio: false } });
+            fatChartInstance = new Chart(ctxF, { type: 'line', data: { labels: labels, datasets: [{ label: '% Grasa', data: dataF, borderColor: '#ffaa00', tension: 3 }] }, options: { plugins: { legend: { display: false } }, scales: { y: { grid: { color: '#333' } }, x: { display: false } }, maintainAspectRatio: false } });
         }
     } else { document.getElementById('user-skinfolds-section').classList.add('hidden'); }
     if(userData.showMeasurements) {
@@ -1053,7 +1146,7 @@ function openRest() {
 
         if (leftSec <= 0) {
             window.closeTimer();
-            playTickSound(true); 
+            playTickSound(true); // SONIDO FINAL LARGO
             if ("Notification" in window && Notification.permission === "granted") {
                  try { new Notification("¡A LA SERIE!", { body: "Descanso finalizado.", icon: "logo.png" }); } catch(e) {}
             }
@@ -1063,7 +1156,6 @@ function openRest() {
 
 window.closeTimer = () => {
     clearInterval(timerInt); window.closeModal('modal-timer');
-    // MediaSession logic removed
 };
 
 window.addRestTime = (s) => { 
@@ -1184,7 +1276,6 @@ window.loadAdminUsers = async () => {
 
             const div = document.createElement('div'); 
             div.className = rowClass;
-            // Se inyecta el botón de aviso al lado del de configuración
             div.innerHTML=`
                 ${avatarHtml}
                 <div style="overflow:hidden;">
@@ -1196,8 +1287,6 @@ window.loadAdminUsers = async () => {
                     <button class="btn-outline btn-small" style="margin:0; border-color:#444; color:#ccc;" onclick="window.openCoachView('${u.id}', null)">⚙️</button>
                 </div>
             `;
-            // IMPORTANTE: Pasamos null como segundo argumento temporalmente, openCoachView recuperará los datos frescos
-            
             l.appendChild(div);
         });
     } catch (e) { l.innerHTML = 'Error de permisos o conexión.'; console.log(e); }
