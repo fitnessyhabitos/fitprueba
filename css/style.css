@@ -216,7 +216,75 @@ input:checked + .slider { background-color: var(--accent-color); } input:checked
 .admin-user-row.is-coach { border-left: 3px solid #ffaa00; background: rgba(255, 170, 0, 0.05); }
 .admin-user-row.is-me { border-left: 3px solid #00ff88; background: rgba(0, 255, 136, 0.05); }
 .assigned-routine-item { background: #222; padding: 10px; margin-bottom: 5px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; border:1px solid #333; }
-.history-row { display: grid; grid-template-columns: 60px 1fr 20px 80px; border-bottom: 1px solid #333; padding: 10px 0; align-items: center; font-size: 0.75rem; text-align: left; }
+/* --- NUEVO HISTORIAL COMPACTO --- */
+.history-list-container {
+    display: flex;
+    flex-direction: column;
+    gap: 6px; /* Espacio pequeño entre cards */
+}
+
+.history-card-compact {
+    background: #1a1a1a;
+    border-radius: 6px;
+    padding: 10px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    border: 1px solid #333; /* Borde sutil por defecto */
+    border-left-width: 4px; /* Borde izquierdo más grueso para el color del RPE */
+    transition: background 0.1s active;
+}
+
+.history-card-compact:active {
+    background: #252525;
+}
+
+.h-left {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.h-date {
+    font-size: 0.65rem;
+    color: #888;
+    margin-bottom: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.h-title {
+    font-size: 0.9rem;
+    font-weight: bold;
+    color: #eee;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.h-right {
+    text-align: right;
+    padding-left: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    min-width: 60px;
+}
+
+.h-vol {
+    font-size: 0.8rem;
+    color: var(--accent-color);
+    font-family: monospace;
+    font-weight: bold;
+}
+
+.h-icon {
+    font-size: 1.2rem;
+    color: #444;
+    line-height: 1;
+    margin-top: -2px;
+}
 .badge { padding: 4px 8px; border-radius: 4px; font-size: 0.65rem; font-weight: bold; text-transform: uppercase; text-align: center; }
 .badge.green { background: rgba(46, 125, 50, 0.3); color: #4caf50; border: 1px solid #2e7d32; }
 .badge.orange { background: rgba(245, 127, 23, 0.3); color: #ffb74d; border: 1px solid #f57f17; }
