@@ -541,6 +541,31 @@
         </div>
     </div>
 
+    <div id="modal-notice-editor" class="modal">
+        <div class="modal-content">
+            <h3 id="notice-modal-title">📢 CREAR AVISO</h3>
+            <input type="text" id="notice-title" placeholder="Título (Ej: Revisión Semanal)" style="font-weight:bold;">
+            <textarea id="notice-text" rows="4" placeholder="Escribe el mensaje aquí..." style="background:#222; color:white; border:1px solid #444; border-radius:8px; padding:10px; width:100%; margin-bottom:10px;"></textarea>
+            <input type="text" id="notice-img" placeholder="URL de Imagen (Opcional)">
+            <input type="text" id="notice-link" placeholder="Link externo (Ej: Youtube/Drive)">
+            
+            <button id="btn-save-notice" class="btn" onclick="window.saveNotice()">PUBLICAR AVISO</button>
+            <button class="btn-danger btn-small" style="width:100%; margin-top:10px;" onclick="window.deleteNotice()">BORRAR AVISO ACTUAL</button>
+            <button class="btn-outline" style="margin-top:15px;" onclick="window.closeModal('modal-notice-editor')">CANCELAR</button>
+        </div>
+    </div>
+
+    <div id="modal-notice-viewer" class="modal" style="z-index:9000;">
+        <div class="modal-content" style="border-color:var(--warning-color); text-align:left;">
+            <div style="text-align:center; color:var(--warning-color); font-weight:bold; margin-bottom:10px; font-size:0.8rem;" id="viewer-header">AVISO</div>
+            <h2 id="viewer-title" style="margin-top:0; color:white; text-align:center;">Título</h2>
+            <img id="viewer-img" src="" class="hidden" style="width:100%; border-radius:8px; margin-bottom:15px; border:1px solid #333;">
+            <p id="viewer-text" style="color:#ccc; line-height:1.5; white-space: pre-wrap; margin-bottom:20px;"></p>
+            <button id="viewer-link-btn" class="btn hidden" style="margin-bottom:10px; background:#444;">🔗 ABRIR ENLACE</button>
+            <button class="btn" onclick="window.closeModal('modal-notice-viewer')">ENTENDIDO</button>
+        </div>
+    </div>
+
     <div id="modal-assign-plan" class="modal">
         <div class="modal-content">
             <h3>ASIGNAR PLAN</h3>
@@ -632,25 +657,6 @@
     <div class="modal-content" style="background:black; padding:0; width:100%; height:100%; max-width:100%; border:none; display:flex; align-items:center; justify-content:center;">
         <img id="full-image-src" style="max-width:100%; max-height:100%; object-fit:contain;">
         <button class="btn-float" style="background:rgba(255,255,255,0.2); color:white; bottom:40px;" onclick="window.closeModal('modal-image-viewer')">✕</button>
-    </div>
-</div>
-
-    <div id="modal-send-notice" class="modal">
-    <div class="modal-content">
-        <h3 style="color:var(--success-color); margin-bottom:5px;">ENVIAR MENSAJE</h3>
-        <p style="font-size:0.8rem; color:#888; margin-bottom:15px;">Para: <span id="modal-notice-target-name" style="color:white; font-weight:bold;">-</span></p>
-        
-        <input type="text" id="ind-notice-title" placeholder="Título del mensaje (ej: ¡Buen progreso!)">
-        <textarea id="ind-notice-text" rows="4" placeholder="Escribe aquí el aviso personal para el atleta..."></textarea>
-        <input type="text" id="ind-notice-link" placeholder="Link opcional (ej: video de técnica)">
-        
-        <div style="margin:10px 0; text-align:left;">
-            <label style="font-size:0.7rem; color:#666;">Imagen adjunta:</label>
-            <input type="file" id="ind-notice-file" accept="image/*" class="btn-outline" style="font-size:0.7rem;">
-        </div>
-
-        <button class="btn" onclick="window.publishNotice(selectedUserCoach)" style="background:var(--success-color); color:black; margin-top:10px;">ENVIAR AHORA</button>
-        <button class="btn-outline" onclick="window.closeModal('modal-send-notice')">CANCELAR</button>
     </div>
 </div>
 
