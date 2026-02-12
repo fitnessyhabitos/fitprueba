@@ -546,7 +546,10 @@
             <h3 id="notice-modal-title">📢 CREAR AVISO</h3>
             <input type="text" id="notice-title" placeholder="Título (Ej: Revisión Semanal)" style="font-weight:bold;">
             <textarea id="notice-text" rows="4" placeholder="Escribe el mensaje aquí..." style="background:#222; color:white; border:1px solid #444; border-radius:8px; padding:10px; width:100%; margin-bottom:10px;"></textarea>
-            <input type="text" id="notice-img" placeholder="URL de Imagen (Opcional)">
+            
+            <label style="display:block; text-align:left; color:#aaa; font-size:0.8rem; margin-bottom:5px;">📸 Imagen (Opcional):</label>
+            <input type="file" id="notice-img-file" accept="image/*" style="margin-bottom:10px;">
+            
             <input type="text" id="notice-link" placeholder="Link externo (Ej: Youtube/Drive)">
             
             <button id="btn-save-notice" class="btn" onclick="window.saveNotice()">PUBLICAR AVISO</button>
@@ -554,7 +557,7 @@
             <button class="btn-outline" style="margin-top:15px;" onclick="window.closeModal('modal-notice-editor')">CANCELAR</button>
         </div>
     </div>
-
+    
     <div id="modal-notice-viewer" class="modal" style="z-index:9000;">
         <div class="modal-content" style="border-color:var(--warning-color); text-align:left;">
             <div style="text-align:center; color:var(--warning-color); font-weight:bold; margin-bottom:10px; font-size:0.8rem;" id="viewer-header">AVISO</div>
@@ -562,7 +565,7 @@
             <img id="viewer-img" src="" class="hidden" style="width:100%; border-radius:8px; margin-bottom:15px; border:1px solid #333;">
             <p id="viewer-text" style="color:#ccc; line-height:1.5; white-space: pre-wrap; margin-bottom:20px;"></p>
             <button id="viewer-link-btn" class="btn hidden" style="margin-bottom:10px; background:#444;">🔗 ABRIR ENLACE</button>
-            <button class="btn" onclick="window.closeModal('modal-notice-viewer')">ENTENDIDO</button>
+            <button id="btn-dismiss-notice" class="btn" onclick="window.dismissNotice()">ENTENDIDO</button>
         </div>
     </div>
 
