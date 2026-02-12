@@ -430,3 +430,22 @@ input:checked + .slider { background-color: var(--accent-color); } input:checked
 .rank-value-highlight {
     font-family: monospace; font-size: 1.1rem; font-weight: bold; color: var(--success-color);
 }
+
+/* Animación para los avisos del sistema */
+.notice-card-animate {
+    animation: noticeIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes noticeIn {
+    from { transform: translateY(-20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+/* Soporte para imágenes en avisos */
+#athlete-notices-display img {
+    transition: transform 0.2s;
+}
+
+#athlete-notices-display img:active {
+    transform: scale(0.98);
+}
