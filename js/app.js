@@ -4,7 +4,7 @@ import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, q
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 import { EXERCISES } from './data.js';
 
-console.log("⚡ FIT DATA: App Iniciada (v7.2 - Audio Fix)...");
+console.log("⚡ FIT DATA: App Iniciada (v8.0 - Final Alerts & Fixes)...");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDW40Lg6QvBc3zaaA58konqsH3QtDrRmyM",
@@ -47,8 +47,10 @@ let rankFilterTime = 'all';
 let rankFilterGender = 'all';   
 let rankFilterCat = 'kg';       
 
+// Gráficas
 let chartInstance = null; let progressChart = null; let fatChartInstance = null; let bioChartInstance = null; let measureChartInstance = null; let coachFatChart = null; let coachBioChart = null; let coachMeasureChart = null; let radarChartInstance = null; let coachChart = null; let userRadarChart = null; let coachRadarChart = null;
 
+// Admin Variables
 let selectedUserCoach = null; 
 let selectedUserObj = null; 
 let editingRoutineId = null; 
@@ -67,37 +69,31 @@ let selectedRoutineForMassAssign = null;
 let selectedAnnouncementForAssign = null;
 let assignMode = 'plan'; 
 
-// --- MOTOR DE AUDIO (RESTAURADO) ---
+// --- MOTOR DE AUDIO ---
 const SILENT_MP3_URL = "https://raw.githubusercontent.com/anars/blank-audio/master/1-minute-of-silence.mp3";
 let htmlAudioElement = new Audio(SILENT_MP3_URL);
 htmlAudioElement.loop = true;
 htmlAudioElement.preload = 'auto';
 htmlAudioElement.volume = 1.0; 
-
 let lastBeepSecond = -1; 
 
-function initAudioEngine() {
+// Definición global para evitar ReferenceError
+window.initAudioEngine = function() {
     if (!audioCtx) {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         audioCtx = new AudioContext();
     }
     if (audioCtx.state === 'suspended') audioCtx.resume();
-    
     htmlAudioElement.play().then(() => {
         if ('mediaSession' in navigator) {
             navigator.mediaSession.playbackState = "playing";
             updateMediaSessionMetadata(totalRestTime || 60, 0);
-            
-            navigator.mediaSession.setActionHandler('play', () => { 
-                htmlAudioElement.play(); navigator.mediaSession.playbackState = "playing"; 
-            });
-            navigator.mediaSession.setActionHandler('pause', () => { 
-                navigator.mediaSession.playbackState = "paused"; 
-            });
+            navigator.mediaSession.setActionHandler('play', () => { htmlAudioElement.play(); navigator.mediaSession.playbackState = "playing"; });
+            navigator.mediaSession.setActionHandler('pause', () => { navigator.mediaSession.playbackState = "paused"; });
             navigator.mediaSession.setActionHandler('previoustrack', () => window.addRestTime(-10));
             navigator.mediaSession.setActionHandler('nexttrack', () => window.addRestTime(10));
         }
-    }).catch(e => console.log("Esperando interacción de usuario..."));
+    }).catch(e => console.log("Esperando interacción..."));
 }
 
 function updateMediaSessionMetadata(duration, position) {
@@ -108,40 +104,30 @@ function updateMediaSessionMetadata(duration, position) {
             album: 'Recuperando...',
             artwork: [{ src: 'logo.png', sizes: '512x512', type: 'image/png' }]
         });
-        navigator.mediaSession.setPositionState({
-            duration: duration,
-            playbackRate: 1,
-            position: position
-        });
+        navigator.mediaSession.setPositionState({ duration: duration, playbackRate: 1, position: position });
     }
 }
 
-function playTickSound(isFinal = false) {
+window.playTickSound = function(isFinal = false) {
     if(!audioCtx) return;
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
-    
     osc.frequency.value = isFinal ? 600 : 1000; 
     osc.type = isFinal ? 'square' : 'sine';
-    
     osc.connect(gain);
     gain.connect(audioCtx.destination);
-    
     const now = audioCtx.currentTime;
     osc.start(now);
-    
     const duration = isFinal ? 0.8 : 0.1;
-    
     gain.gain.setValueAtTime(0.5, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
     osc.stop(now + duration);
-    
     if("vibrate" in navigator) navigator.vibrate(isFinal ? [500] : [50]);
 }
 
-document.body.addEventListener('touchstart', initAudioEngine, {once:true});
-document.body.addEventListener('click', initAudioEngine, {once:true});
-window.testSound = () => { playTickSound(false); setTimeout(() => playTickSound(true), 500); };
+document.body.addEventListener('touchstart', window.initAudioEngine, {once:true});
+document.body.addEventListener('click', window.initAudioEngine, {once:true});
+window.testSound = () => { window.playTickSound(false); setTimeout(() => window.playTickSound(true), 500); };
 
 
 // --- INYECCIÓN UI ---
@@ -306,7 +292,7 @@ function injectTelegramAndFields() {
 document.addEventListener('DOMContentLoaded', injectAppUI);
 setTimeout(injectAppUI, 1000); 
 
-// --- DEFINICIONES DE FUNCIONES ---
+// --- DEFINICIONES DE FUNCIONES CLAVE ---
 window.openAlertModal = (uid = null) => {
     alertTargetUid = uid;
     const label = document.getElementById('alert-target-label');
@@ -526,8 +512,6 @@ window.showAnnouncementModal = (ann, id) => {
     document.querySelector('.announcement-close').onclick = () => window.closeAnnouncement(id);
     document.getElementById('modal-announcement').classList.add('active');
 };
-
-window.testSound = () => { playTickSound(false); setTimeout(() => playTickSound(true), 500); };
 
 window.enableNotifications = () => {
     if (!("Notification" in window)) return alert("Tu dispositivo no soporta notificaciones.");
@@ -906,6 +890,70 @@ window.toggleAdminMode = (mode) => {
     if(mode==='users') window.loadAdminUsers(); 
     if(mode==='lib') window.loadAdminLibrary(); 
     if(mode==='plans') window.loadAdminPlans();
+};
+
+window.openAlertModal = (uid = null) => {
+    alertTargetUid = uid;
+    const label = document.getElementById('alert-target-label');
+    if (uid) label.innerText = "(A Usuario)";
+    else label.innerText = "(A TODOS)";
+    
+    document.getElementById('alert-title').value = "";
+    document.getElementById('alert-msg').value = "";
+    document.getElementById('alert-link').value = "";
+    document.getElementById('alert-btn-text').value = "";
+    document.getElementById('alert-file').value = "";
+    
+    document.getElementById('modal-alert-creator').classList.add('active');
+};
+
+window.sendAlert = async () => {
+    const title = document.getElementById('alert-title').value;
+    const content = document.getElementById('alert-msg').value;
+    const link = document.getElementById('alert-link').value;
+    const linkText = document.getElementById('alert-btn-text').value || "VER MÁS";
+    const fileInp = document.getElementById('alert-file');
+    
+    if (!title || !content) return alert("Título y Mensaje requeridos.");
+    
+    const btn = document.getElementById('btn-send-alert');
+    btn.innerText = "ENVIANDO..."; btn.disabled = true;
+
+    try {
+        let imageUrl = "";
+        if (fileInp.files[0]) {
+            const file = fileInp.files[0];
+            const storagePath = `alerts/${Date.now()}_${file.name}`;
+            const storageRef = ref(storage, storagePath);
+            await uploadBytes(storageRef, file);
+            imageUrl = await getDownloadURL(storageRef);
+        }
+
+        let assignedTo = [];
+        if (alertTargetUid) {
+            assignedTo.push(alertTargetUid);
+        } else {
+            const q = query(collection(db, "users"), where("role", "==", "athlete"));
+            const snap = await getDocs(q);
+            snap.forEach(doc => assignedTo.push(doc.id));
+        }
+
+        await addDoc(collection(db, "announcements"), {
+            title, content, link, linkText, imageUrl,
+            active: true, 
+            createdAt: serverTimestamp(),
+            assignedTo: assignedTo
+        });
+
+        alert("✅ Aviso enviado correctamente.");
+        document.getElementById('modal-alert-creator').classList.remove('active');
+
+    } catch (e) {
+        console.error(e);
+        alert("Error al enviar: " + e.message);
+    } finally {
+        btn.innerText = "ENVIAR AVISO"; btn.disabled = false;
+    }
 };
 
 window.loadAdminUsers = async () => {
