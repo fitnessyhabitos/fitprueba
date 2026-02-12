@@ -449,3 +449,20 @@ input:checked + .slider { background-color: var(--accent-color); } input:checked
 #athlete-notices-display img:active {
     transform: scale(0.98);
 }
+
+/* Fila de usuario en Admin */
+.admin-user-row {
+    display: grid;
+    grid-template-columns: 45px 1fr auto; /* Avatar | Texto | Botones */
+    gap: 12px;
+    padding: 12px;
+    align-items: center;
+    border-bottom: 1px solid #222;
+    background: #121212;
+    margin-bottom: 2px;
+}
+
+/* El botón de aviso individual (sobre el fondo oscuro) */
+.btn-outline[onclick*="openNoticeModal"] {
+    background: rgba(0, 255, 136, 0.05);
+}
