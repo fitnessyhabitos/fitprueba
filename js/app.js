@@ -4,7 +4,7 @@ import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, q
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 import { EXERCISES } from './data.js';
 
-console.log("⚡ FIT DATA: App Iniciada (v6.7 - Integración Senior Total)...");
+console.log("⚡ FIT DATA: App Iniciada (v6.8 - Senior Quick-Access Notificaciones)...");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDW40Lg6QvBc3zaaA58konqsH3QtDrRmyM",
@@ -40,8 +40,9 @@ let totalRestTime = 60;
 let restEndTime = 0; 
 let noteTargetIndex = null;
 let communityUnsubscribe = null; 
-let noticesUnsubscribe = null;
+let noticesUnsubscribe = null; // Listener de avisos
 
+// Filtros Ranking
 let rankFilterTime = 'all';      
 let rankFilterGender = 'all';    
 let rankFilterCat = 'kg';        
@@ -59,35 +60,52 @@ let currentRoutineSelections = [];
 window.currentRoutineSelections = currentRoutineSelections; 
 let swapTargetIndex = null; 
 
+// Variables de Asignación Masiva
 let selectedPlanForMassAssign = null; 
 let selectedRoutineForMassAssign = null;
-let assignMode = 'plan'; 
+let assignMode = 'plan'; // 'plan' o 'routine'
 
-// --- SISTEMA DE AVISOS (INTEGRACIÓN v6.7) ---
+// --- SISTEMA DE AVISOS (INTEGRADO v6.8) ---
 
 function initNoticesListener() {
     if (noticesUnsubscribe) noticesUnsubscribe();
     if (!currentUser) return;
+
     const routinesView = document.getElementById('routines-view');
     let display = document.getElementById('notices-display-area');
-    if (!display && routinesView) {
-        display = document.createElement('div'); display.id = 'notices-display-area';
-        display.style.marginBottom = '20px'; routinesView.prepend(display);
+    if (!display) {
+        display = document.createElement('div');
+        display.id = 'notices-display-area';
+        display.style.marginBottom = '20px';
+        routinesView.prepend(display);
     }
+
     const q = query(collection(db, "notices"), where("active", "==", true), orderBy("createdAt", "desc"), limit(5));
+    
     noticesUnsubscribe = onSnapshot(q, (snapshot) => {
-        if(!display) return; display.innerHTML = '';
+        display.innerHTML = '';
         snapshot.forEach(docSnap => {
             const n = docSnap.data();
-            if (!userData?.readNotices?.includes(docSnap.id) && (n.target === 'all' || n.target === currentUser.uid)) {
-                const card = document.createElement('div'); card.className = 'card notice-item notice-card-animate';
+            const noticeId = docSnap.id;
+            const isRead = userData?.readNotices?.includes(noticeId);
+            if (!isRead && (n.target === 'all' || n.target === currentUser.uid)) {
+                const card = document.createElement('div');
+                card.className = 'card notice-item';
                 card.style.borderLeft = n.target === 'all' ? '4px solid var(--warning-color)' : '4px solid var(--success-color)';
-                const imgH = n.image ? `<img src="${n.image}" style="width:100%; border-radius:8px; margin:10px 0; max-height:250px; object-fit:cover;" onclick="window.viewFullImage(this.src)">` : '';
-                const linkH = n.link ? `<button class="btn-small btn-outline" onclick="window.open('${n.link}', '_blank')" style="margin-top:5px; border-color:var(--accent-color); color:var(--accent-color);">🔗 VER ENLACE</button>` : '';
-                card.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:start;">
-                    <h4 style="color:white; margin:0; font-size:1rem;">${n.target === 'all' ? '📢 AVISO GLOBAL' : '📩 MENSAJE PERSONAL'}</h4>
-                    <button onclick="window.dismissNotice('${docSnap.id}')" style="background:none; border:none; color:#666; font-size:1.2rem; cursor:pointer;">✕</button>
-                </div><div style="font-weight:bold; color:white; margin:5px 0;">${n.title}</div><p style="color:#aaa; font-size:0.85rem; line-height:1.4;">${n.text}</p>${imgH}${linkH}`;
+                
+                const imgHtml = n.image ? `<img src="${n.image}" style="width:100%; border-radius:8px; margin:10px 0; max-height:250px; object-fit:cover;" onclick="window.viewFullImage(this.src)">` : '';
+                const linkHtml = n.link ? `<button class="btn-small btn-outline" onclick="window.open('${n.link}', '_blank')" style="margin-top:10px; border-color:var(--accent-color); color:var(--accent-color);">🔗 VER ENLACE</button>` : '';
+                
+                card.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; align-items:start;">
+                        <h4 style="color:white; margin:0;">${n.target === 'all' ? '📢 AVISO GLOBAL' : '📩 MENSAJE PERSONAL'}</h4>
+                        <button onclick="window.dismissNotice('${noticeId}')" style="background:none; border:none; color:#666; font-size:1.2rem;">✕</button>
+                    </div>
+                    <div style="font-weight:bold; color:white; margin:5px 0;">${n.title}</div>
+                    <p style="color:#aaa; font-size:0.85rem; line-height:1.4;">${n.text}</p>
+                    ${imgHtml}
+                    ${linkHtml}
+                `;
                 display.appendChild(card);
             }
         });
@@ -95,24 +113,40 @@ function initNoticesListener() {
 }
 
 window.dismissNotice = async (id) => {
-    try { await updateDoc(doc(db, "users", currentUser.uid), { readNotices: arrayUnion(id) });
-    if(!userData.readNotices) userData.readNotices = []; userData.readNotices.push(id); } catch(e) {}
+    try {
+        await updateDoc(doc(db, "users", currentUser.uid), { readNotices: arrayUnion(id) });
+        if(!userData.readNotices) userData.readNotices = [];
+        userData.readNotices.push(id);
+    } catch(e) { console.error("Error dismiss:", e); }
 };
 
+// Abre el modal para enviar aviso a un atleta específico desde la lista
 window.openNoticeModal = (uid, name) => {
     selectedUserCoach = uid;
-    document.getElementById('modal-notice-target-name').innerText = name || "Atleta";
+    const targetLabel = document.getElementById('modal-notice-target-name');
+    if (targetLabel) targetLabel.innerText = name || "Atleta";
     window.openModal('modal-send-notice');
 };
 
 window.publishNotice = async (target) => {
-    const isG = target === 'all';
-    const title = document.getElementById(isG ? 'adm-notice-title' : 'ind-notice-title')?.value;
-    const text = document.getElementById(isG ? 'adm-notice-text' : 'ind-notice-text')?.value;
-    const link = document.getElementById(isG ? 'adm-notice-link' : 'ind-notice-link')?.value;
-    const file = document.getElementById(isG ? 'adm-notice-file' : 'ind-notice-file')?.files[0];
+    // Si el target es 'all', usa los IDs del panel global, si no, usa los del modal individual
+    const isGlobal = target === 'all';
+    const titleId = isGlobal ? 'adm-notice-title' : 'ind-notice-title';
+    const textId = isGlobal ? 'adm-notice-text' : 'ind-notice-text';
+    const linkId = isGlobal ? 'adm-notice-link' : 'ind-notice-link';
+    const fileId = isGlobal ? 'adm-notice-file' : 'ind-notice-file';
+
+    const title = document.getElementById(titleId)?.value;
+    const text = document.getElementById(textId)?.value;
+    const link = document.getElementById(linkId)?.value;
+    const file = document.getElementById(fileId)?.files[0];
+
     if (!title || !text) return alert("Título y texto obligatorios");
-    const btn = event.target; btn.innerText = "⏳..."; btn.disabled = true;
+
+    const btn = event.target;
+    btn.innerText = "⏳ PUBLICANDO...";
+    btn.disabled = true;
+
     try {
         let imageUrl = "";
         if (file) {
@@ -120,29 +154,98 @@ window.publishNotice = async (target) => {
             const snap = await uploadBytes(storageRef, file);
             imageUrl = await getDownloadURL(snap.ref);
         }
-        await addDoc(collection(db, "notices"), { title, text, link: link || "", image: imageUrl, target, active: true, createdAt: serverTimestamp(), createdBy: currentUser.uid });
+
+        await addDoc(collection(db, "notices"), {
+            title, text, link: link || "", image: imageUrl,
+            target: target, active: true, createdAt: serverTimestamp(),
+            createdBy: currentUser.uid
+        });
+
         alert("✅ Aviso publicado.");
-        if(!isG) window.closeModal('modal-send-notice');
-        else { document.getElementById('adm-notice-title').value = ""; document.getElementById('adm-notice-text').value = ""; }
+        if(isGlobal) {
+            document.getElementById(titleId).value = "";
+            document.getElementById(textId).value = "";
+            document.getElementById(linkId).value = "";
+        } else {
+            window.closeModal('modal-send-notice');
+            document.getElementById(titleId).value = "";
+            document.getElementById(textId).value = "";
+        }
     } catch (e) { alert("Error: " + e.message); }
-    finally { btn.innerText = isG ? "PUBLICAR" : "ENVIAR AVISO"; btn.disabled = false; }
+    finally { btn.innerText = isGlobal ? "PUBLICAR" : "ENVIAR MENSAJE"; btn.disabled = false; }
 };
 
+// --- FIN SISTEMA DE AVISOS ---
+
+// --- FUNCIONES DE INYECCIÓN UI ---
+function injectTelegramUI() {
+    const regForm = document.getElementById('register-form');
+    const regEmail = document.getElementById('reg-email');
+    if (regForm && regEmail && !document.getElementById('reg-telegram')) {
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.id = 'reg-telegram';
+        input.placeholder = 'Usuario Telegram (ej: @juanperez)';
+        input.style.marginBottom = '10px';
+        regEmail.parentNode.insertBefore(input, regEmail);
+    }
+
+    const restInput = document.getElementById('cfg-rest-time');
+    if (restInput && !document.getElementById('cfg-telegram')) {
+        const wrapper = document.createElement('div');
+        wrapper.id = "tg-wrapper";
+        wrapper.style.cssText = "width: 100%; margin-top: 25px; margin-bottom: 25px; text-align: center; border-top: 1px solid #222; padding-top: 15px;"; 
+        wrapper.innerHTML = `
+            <label style="display:block; margin-bottom:8px; font-size:0.85rem; color:#aaa; font-weight:bold;">📸 Tu Usuario Telegram</label>
+            <input type="text" id="cfg-telegram" placeholder="@usuario" 
+                style="width: 70%; max-width: 250px; margin: 0 auto 15px auto; background: #111; border: 1px solid #444; color: white; padding: 10px; border-radius: 8px; text-align: center; display:block;">
+            <button onclick="window.contactCoach()" 
+                style="background: var(--accent-color); color: #000; border: none; padding: 10px 24px; border-radius: 50px; font-weight: bold; font-size: 0.9rem; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); transition: transform 0.1s;">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 11.944 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
+                Contactar Coach
+            </button>
+        `;
+        const parentContainer = restInput.parentElement; 
+        if (parentContainer) parentContainer.insertAdjacentElement('afterend', wrapper);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', injectTelegramUI);
+setTimeout(injectTelegramUI, 1000); 
+
 // --- UTILIDADES ---
-const normalizeText = (text) => text ? text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() : "";
 function getWeekNumber(d) {
     d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
     d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay()||7));
     var yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
-    return d.getUTCFullYear() + "_W" + Math.ceil(( ( (d - yearStart) / 86400000) + 1)/7);
+    var weekNo = Math.ceil(( ( (d - yearStart) / 86400000) + 1)/7);
+    return d.getUTCFullYear() + "_W" + weekNo;
 }
 
-function showToast(msg) { 
-    const container = document.getElementById('toast-container') || (() => {
-        const d = document.createElement('div'); d.id = 'toast-container'; document.body.appendChild(d); return d;
-    })();
-    const t = document.createElement('div'); t.className = 'toast-msg'; t.innerText = msg;
-    container.appendChild(t); setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 500); }, 4000); 
+function initCommunityListener() {
+    if (communityUnsubscribe) communityUnsubscribe(); 
+    const q = query(collection(db, "workouts"), orderBy("date", "desc"), limit(1));
+    communityUnsubscribe = onSnapshot(q, (snapshot) => {
+        snapshot.docChanges().forEach(async (change) => {
+            if (change.type === "added") {
+                const w = change.doc.data();
+                const now = Date.now() / 1000;
+                const workoutTime = w.date ? w.date.seconds : 0;
+                if (now - workoutTime < 60 && w.uid !== currentUser.uid) {
+                    showToast(`🔥 Alguien terminó: ${w.routine}`);
+                    if(document.getElementById('cfg-sound')?.checked) {
+                         const osc = audioCtx?.createOscillator();
+                         if(osc) {
+                             const g = audioCtx.createGain();
+                             osc.connect(g); g.connect(audioCtx.destination);
+                             osc.frequency.value = 500; osc.start(); g.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.5);
+                             osc.stop(audioCtx.currentTime + 0.5);
+                         }
+                    }
+                }
+            }
+        });
+    });
 }
 
 let scrollPos = 0;
@@ -150,92 +253,225 @@ window.openModal = (id) => {
     scrollPos = window.pageYOffset;
     document.body.style.top = `-${scrollPos}px`;
     document.body.classList.add('modal-open');
-    const m = document.getElementById(id); if(m) m.classList.add('active');
+    const m = document.getElementById(id);
+    if(m) m.classList.add('active');
 };
 window.closeModal = (id) => {
-    const m = document.getElementById(id); if(m) m.classList.remove('active');
-    document.body.classList.remove('modal-open'); document.body.style.top = ''; window.scrollTo(0, scrollPos);
+    const m = document.getElementById(id);
+    if(m) m.classList.remove('active');
+    document.body.classList.remove('modal-open');
+    document.body.style.top = '';
+    window.scrollTo(0, scrollPos);
 };
-window.toggleElement = (id) => document.getElementById(id)?.classList.toggle('hidden');
+
+const normalizeText = (text) => {
+    if(!text) return "";
+    return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+};
+window.toggleElement = (id) => {
+    const el = document.getElementById(id);
+    if(el) el.classList.toggle('hidden');
+};
 
 // --- AUDIO ENGINE ---
 const SILENT_MP3_URL = "https://raw.githubusercontent.com/anars/blank-audio/master/1-minute-of-silence.mp3";
 let htmlAudioElement = new Audio(SILENT_MP3_URL);
-htmlAudioElement.loop = true; htmlAudioElement.preload = 'auto';
+htmlAudioElement.loop = true;
+htmlAudioElement.preload = 'auto';
+htmlAudioElement.volume = 1.0; 
+
+let lastBeepSecond = -1; 
 
 function initAudioEngine() {
-    if (!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    if (!audioCtx) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContext();
+    }
     if (audioCtx.state === 'suspended') audioCtx.resume();
+    
     htmlAudioElement.play().then(() => {
         if ('mediaSession' in navigator) {
             navigator.mediaSession.playbackState = "playing";
-            navigator.mediaSession.setActionHandler('play', () => htmlAudioElement.play());
-            navigator.mediaSession.setActionHandler('pause', () => htmlAudioElement.pause());
+            updateMediaSessionMetadata(totalRestTime || 60, 0);
+            
+            navigator.mediaSession.setActionHandler('play', () => { 
+                htmlAudioElement.play(); navigator.mediaSession.playbackState = "playing"; 
+            });
+            navigator.mediaSession.setActionHandler('pause', () => { 
+                navigator.mediaSession.playbackState = "paused"; 
+            });
+            navigator.mediaSession.setActionHandler('previoustrack', () => window.addRestTime(-10));
+            navigator.mediaSession.setActionHandler('nexttrack', () => window.addRestTime(10));
         }
-    }).catch(() => {});
+    }).catch(e => console.log("Esperando interacción de usuario..."));
+}
+
+function updateMediaSessionMetadata(duration, position) {
+    if ('mediaSession' in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+            title: `Descanso: ${Math.ceil(duration - position)}s`,
+            artist: 'Fit Data Pro',
+            album: 'Recuperando...',
+            artwork: [{ src: 'logo.png', sizes: '512x512', type: 'image/png' }]
+        });
+        navigator.mediaSession.setPositionState({
+            duration: duration,
+            playbackRate: 1,
+            position: position
+        });
+    }
 }
 
 function playTickSound(isFinal = false) {
     if(!audioCtx) return;
-    const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
-    osc.frequency.value = isFinal ? 600 : 1000; osc.type = isFinal ? 'square' : 'sine';
-    osc.connect(gain); gain.connect(audioCtx.destination);
-    const now = audioCtx.currentTime; osc.start(now);
-    gain.gain.setValueAtTime(0.5, now); gain.gain.exponentialRampToValueAtTime(0.001, now + (isFinal ? 0.8 : 0.1));
-    osc.stop(now + (isFinal ? 0.8 : 0.1));
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    
+    osc.frequency.value = isFinal ? 600 : 1000; 
+    osc.type = isFinal ? 'square' : 'sine';
+    
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    
+    const now = audioCtx.currentTime;
+    osc.start(now);
+    
+    const duration = isFinal ? 0.8 : 0.1;
+    
+    gain.gain.setValueAtTime(0.5, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+    osc.stop(now + duration);
+    
     if("vibrate" in navigator) navigator.vibrate(isFinal ? [500] : [50]);
 }
-document.body.addEventListener('touchstart', initAudioEngine, {once:true});
 
-// --- CORE HANDLERS ---
+document.body.addEventListener('touchstart', initAudioEngine, {once:true});
+document.body.addEventListener('click', initAudioEngine, {once:true});
+
+window.testSound = () => { playTickSound(false); setTimeout(() => playTickSound(true), 500); };
+
+window.enableNotifications = () => {
+    if (!("Notification" in window)) return alert("Tu dispositivo no soporta notificaciones.");
+    Notification.requestPermission().then((p) => {
+        if (p === "granted") {
+            if("vibrate" in navigator) navigator.vibrate([200]);
+            new Notification("Fit Data", { body: "✅ Notificaciones listas.", icon: "logo.png" });
+            alert("✅ Vinculado.");
+        } else alert("❌ Permiso denegado.");
+    });
+};
+
 onAuthStateChanged(auth, async (user) => {
     if(user) {
-        currentUser = user; const snap = await getDoc(doc(db,"users",user.uid));
+        currentUser = user;
+        const snap = await getDoc(doc(db,"users",user.uid));
         if(snap.exists()){
-            userData = snap.data(); checkPhotoVisualReminder(); initCommunityListener(); initNoticesListener(); checkPhotoReminder(); injectTelegramUI();
-            if(userData.role === 'admin' || userData.role === 'assistant') document.getElementById('top-btn-coach').classList.remove('hidden');
+            userData = snap.data();
+            checkPhotoVisualReminder();
+            initCommunityListener();
+            initNoticesListener();
+            checkPhotoReminder();
+            injectTelegramUI();
+            
+            if(userData.role === 'admin' || userData.role === 'assistant') {
+                document.getElementById('top-btn-coach').classList.remove('hidden');
+            }
+            if(userData.role !== 'admin' && userData.role !== 'assistant' && !sessionStorage.getItem('notif_dismissed')) {
+                const routinesSnap = await getDocs(query(collection(db, "routines"), where("assignedTo", "array-contains", user.uid)));
+                if(!routinesSnap.empty) document.getElementById('notif-badge').style.display = 'block';
+            }
             if(userData.approved){
-                setTimeout(() => document.getElementById('loading-screen').classList.add('hidden'), 1500);
+                setTimeout(() => { document.getElementById('loading-screen').classList.add('hidden'); }, 1500); 
                 document.getElementById('main-header').classList.remove('hidden');
                 loadRoutines();
                 const savedW = localStorage.getItem('fit_active_workout');
-                if(savedW) { activeWorkout = JSON.parse(savedW); renderWorkout(); switchTab('workout-view'); startTimerMini(); } 
-                else { switchTab('routines-view'); }
+                if(savedW) {
+                    activeWorkout = JSON.parse(savedW);
+                    renderWorkout();
+                    switchTab('workout-view');
+                    startTimerMini();
+                } else { switchTab('routines-view'); }
             } else { alert("Cuenta en revisión."); signOut(auth); }
         }
     } else {
-        setTimeout(() => document.getElementById('loading-screen').classList.add('hidden'), 1500);
-        switchTab('auth-view'); document.getElementById('main-header').classList.add('hidden');
+        setTimeout(() => { document.getElementById('loading-screen').classList.add('hidden'); }, 1500);
+        switchTab('auth-view');
+        document.getElementById('main-header').classList.add('hidden');
+        if(communityUnsubscribe) communityUnsubscribe();
+        if(noticesUnsubscribe) noticesUnsubscribe();
+        injectTelegramUI();
     }
 });
 
-function initCommunityListener() {
-    if (communityUnsubscribe) communityUnsubscribe();
-    const q = query(collection(db, "workouts"), orderBy("date", "desc"), limit(1));
-    communityUnsubscribe = onSnapshot(q, (snapshot) => {
-        snapshot.docChanges().forEach(change => {
-            if (change.type === "added" && change.doc.data().uid !== currentUser.uid) {
-                const w = change.doc.data();
-                if ((Date.now()/1000) - (w.date?.seconds||0) < 60) showToast(`🔥 Alguien terminó: ${w.routine}`);
-            }
-        });
-    });
+function checkPhotoReminder() {
+    if(!userData.photoDay) return;
+    const now = new Date();
+    const day = now.getDay();
+    const time = now.toTimeString().substr(0,5);
+    if(day == userData.photoDay && time === userData.photoTime) alert("📸 HORA DE TU FOTO DE PROGRESO 📸");
 }
 
-// --- RENDERING ENGINE ---
+function checkPhotoVisualReminder() {
+    const bannerId = 'photo-missing-banner';
+    const existing = document.getElementById(bannerId);
+    if(existing) existing.remove();
+    if(!userData.photo || userData.photo === "") {
+        const div = document.createElement('div');
+        div.id = bannerId;
+        div.style.cssText = "background: #ffaa00; color: #000; padding: 10px; text-align: center; font-weight: bold; font-size: 0.9rem; cursor: pointer; animation: pulse 2s infinite; margin-top:5px;";
+        div.innerHTML = "📸 ¡Sube tu foto de perfil para aparecer en el Ranking! (Click aquí)";
+        div.onclick = () => { switchTab('profile-view'); };
+        const header = document.getElementById('main-header');
+        if(header && header.parentNode) header.parentNode.insertBefore(div, header.nextSibling);
+    }
+}
+
 window.switchTab = (t) => {
     document.querySelectorAll('.view-container').forEach(e => e.classList.remove('active'));
     document.getElementById(t).classList.add('active');
+    document.getElementById('main-container').scrollTop = 0;
     document.querySelectorAll('.top-nav-item').forEach(n => n.classList.remove('active'));
     if (t === 'routines-view') document.getElementById('top-btn-routines').classList.add('active');
-    if (t === 'profile-view') { document.getElementById('top-btn-profile').classList.add('active'); loadProfile(); }
-    if (t === 'admin-view' || t === 'coach-detail-view') document.getElementById('top-btn-coach').classList.add('active');
+    if (t === 'profile-view') {
+        document.getElementById('top-btn-profile').classList.add('active');
+        loadProfile();
+    }
+    if (t === 'admin-view' || t === 'coach-detail-view') {
+        document.getElementById('top-btn-coach').classList.add('active');
+    }
 };
 
+window.toggleAuth = (m) => { document.getElementById('login-form').classList.toggle('hidden',m!=='login'); document.getElementById('register-form').classList.toggle('hidden',m!=='register'); };
+window.logout = () => signOut(auth).then(()=>location.reload());
+
+window.recoverPass = async () => {
+    const email = prompt("Introduce tu email:");
+    if(email) try { await sendPasswordResetEmail(auth, email); alert("📧 Correo enviado."); } catch(e) { alert("Error: " + e.message); }
+};
+window.dismissNotif = () => { document.getElementById('notif-badge').style.display = 'none'; switchTab('routines-view'); sessionStorage.setItem('notif_dismissed', 'true'); };
+
 function getExerciseData(name) {
-    let match = EXERCISES.find(e => normalizeText(e.n) === normalizeText(name));
-    if(!match) return { img: 'logo.png', mInfo: {main:'General', sec:[]}, type:'c', v:null };
+    if(!name) return { img: 'logo.png', mInfo: {main:'General', sec:[]}, type:'c', v:null };
+    let match = EXERCISES.find(e => e.n === name);
+    if (!match) { const cleanName = normalizeText(name); match = EXERCISES.find(e => normalizeText(e.n) === cleanName); }
+    if (!match) { const cleanName = normalizeText(name); match = EXERCISES.find(e => { const cleanDbName = normalizeText(e.n); return cleanDbName.includes(cleanName) || cleanName.includes(cleanDbName); }); }
+    if (!match) {
+        const n = normalizeText(name); let m = "General", img = "logo.png";
+        if(n.includes("press")||n.includes("pecho")||n.includes("aperturas")) { m="Pecho"; img="pecho.png"; }
+        else if(n.includes("remo")||n.includes("jalon")||n.includes("espalda")||n.includes("dominadas")) { m="Espalda"; img="espalda.png"; }
+        else if(n.includes("sentadilla")||n.includes("prensa")||n.includes("extension")||n.includes("zancada")) { m="Cuádriceps"; img="cuadriceps.png"; }
+        else if(n.includes("curl")||n.includes("biceps")) { m="Bíceps"; img="biceps.png"; }
+        else if(n.includes("triceps")||n.includes("frances")||n.includes("fondos")) { m="Tríceps"; img="triceps.png"; }
+        else if(n.includes("hombro")||n.includes("militar")||n.includes("elevacion")||n.includes("pajaros")) { m="Hombros"; img="hombros.png"; }
+        return { img: img, mInfo: getMuscleInfoByGroup(m), type:'c', v:null };
+    }
     return { img: match.img, mInfo: getMuscleInfoByGroup(match.m), type: match.t || 'c', v: match.v };
+}
+
+function getMuscleInfoByGroup(m) {
+    let s = [];
+    if(m==="Pecho") s=["Tríceps","Hombros"]; else if(m==="Espalda") s=["Bíceps", "Antebrazo"]; else if(m==="Cuádriceps") s=["Glúteos", "Gemelos"]; else if(m==="Isquios") s=["Glúteos", "Espalda Baja"]; else if(m==="Hombros") s=["Tríceps", "Trapecio"]; else if(m==="Bíceps") s=["Antebrazo"]; else if(m==="Tríceps") s=["Hombros", "Pecho"]; else if(m==="Glúteos") s=["Isquios", "Cuádriceps"];
+    return {main:m, sec:s};
 }
 
 async function loadRoutines() {
@@ -244,282 +480,735 @@ async function loadRoutines() {
         l.innerHTML = '';
         s.forEach(d=>{
             const r = d.data();
-            if(r.assignedTo?.includes(currentUser.uid)){
+            const isAssignedToMe = r.assignedTo && r.assignedTo.includes(currentUser.uid);
+            
+            if(isAssignedToMe){
                 const div = document.createElement('div'); div.className = 'card';
-                div.innerHTML = `<div style="display:flex; justify-content:space-between;"><h3 style="color:var(--accent-color)">${r.name}</h3><div>${r.uid === currentUser.uid ? `<button style="background:none;border:none;margin-right:10px;" onclick="openEditor('${d.id}')">✏️</button><button style="background:none;border:none;" onclick="delRoutine('${d.id}')">🗑️</button>` : '🔒'}</div></div><p style="color:#666; font-size:0.8rem; margin:10px 0;">${r.exercises.length} Ejercicios</p><button class="btn" onclick="startWorkout('${d.id}')">ENTRENAR</button>`;
+                const canEdit = r.uid === currentUser.uid;
+                div.innerHTML = `<div style="display:flex; justify-content:space-between;"><h3 style="color:var(--accent-color)">${r.name}</h3><div>${canEdit ? `<button style="background:none;border:none;margin-right:10px;" onclick="openEditor('${d.id}')">✏️</button><button style="background:none;border:none;" onclick="delRoutine('${d.id}')">🗑️</button>` : '🔒'}</div></div><p style="color:#666; font-size:0.8rem; margin:10px 0;">${r.exercises.length} Ejercicios</p><button class="btn" onclick="startWorkout('${d.id}')">ENTRENAR</button>`;
                 l.appendChild(div);
             }
         });
+        if(l.innerHTML === '') l.innerHTML = '<div style="padding:20px; text-align:center; color:#666;">No tienes rutinas asignadas.</div>';
     });
 }
 
-// --- WORKOUT ENGINE ---
-function saveLocalWorkout() { if(activeWorkout) localStorage.setItem('fit_active_workout', JSON.stringify(activeWorkout)); }
+window.openEditor = async (id = null) => {
+    editingRoutineId = id; document.getElementById('editor-name').value = ''; document.getElementById('editor-title').innerText = id ? "EDITAR RUTINA" : "NUEVA RUTINA";
+    if (id) {
+        const docSnap = await getDoc(doc(db, "routines", id)); const r = docSnap.data(); document.getElementById('editor-name').value = r.name;
+        currentRoutineSelections = r.exercises.map(ex => ({ n: ex.n || ex, s: ex.s || false, series: ex.series || 5, reps: ex.reps || "20-16-16-16-16" }));
+    } else { currentRoutineSelections = []; }
+    window.currentRoutineSelections = currentRoutineSelections;
+    renderExercises(EXERCISES); renderSelectedSummary(); switchTab('editor-view');
+};
+
+window.filterExercises = (t) => { 
+    const cleanSearch = normalizeText(t);
+    const filtered = EXERCISES.filter(e => {
+        const nameMatch = normalizeText(e.n).includes(cleanSearch);
+        const muscleMatch = e.m ? normalizeText(e.m).includes(cleanSearch) : false;
+        return nameMatch || muscleMatch;
+    });
+    renderExercises(filtered); 
+};
+
+// --- CORE DEL CREADOR DE RUTINAS (AUTOSORT + INLINE EDIT) ---
+function renderExercises(l) {
+    const c = document.getElementById('exercise-selector-list'); c.innerHTML = '';
+    
+    // Autosort: Seleccionados primero
+    const sortedList = [...l].sort((a, b) => {
+        const aSelected = currentRoutineSelections.some(x => x.n === a.n);
+        const bSelected = currentRoutineSelections.some(x => x.n === b.n);
+        if (aSelected && !bSelected) return -1;
+        if (!aSelected && bSelected) return 1;
+        return 0;
+    });
+
+    sortedList.forEach(e => {
+        const d = document.createElement('div');
+        const selectedIndex = currentRoutineSelections.findIndex(x => x.n === e.n);
+        const isSelected = selectedIndex > -1;
+        const obj = isSelected ? currentRoutineSelections[selectedIndex] : null;
+
+        d.id = `ex-card-${normalizeText(e.n)}`;
+        d.className = 'ex-select-item';
+        
+        if (isSelected) {
+            d.classList.add('selected-red-active');
+            d.style.cssText = "background: rgba(50, 10, 10, 0.95); border-left: 4px solid var(--accent-color); border: 1px solid var(--accent-color); padding: 10px; margin-bottom: 5px; border-radius: 8px; flex-direction:column; align-items: stretch;";
+            
+            const linkActiveStyle = obj.s ? "color: var(--accent-color); text-shadow: 0 0 5px var(--accent-color);" : "color:rgba(255,255,255,0.2);";
+
+            d.innerHTML = `
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <img src="${e.img}" onerror="this.src='logo.png'" style="width:40px; height:40px; border-radius:4px; object-fit:cover;">
+                        <span style="font-weight:bold; color:white;">${e.n}</span>
+                    </div>
+                    <b class="btn-remove-ex" onclick="event.stopPropagation(); removeSelection('${obj.n}')" style="cursor:pointer; color:#ff5555; font-size:1.2rem; padding:5px;">✕</b>
+                </div>
+                <div class="summary-inputs" style="display:flex; gap:8px; align-items:center; width:100%;">
+                    <input type="number" value="${obj.series || 5}" 
+                           oninput="window.updateSelectionData(${selectedIndex}, 'series', this.value)" 
+                           onclick="event.stopPropagation()"
+                           placeholder="Ser" 
+                           style="width:60px; text-align:center; padding:8px; background:#000; border:1px solid #444; color:white; border-radius:4px;">
+                    <span style="color:#aaa;">x</span>
+                    <input type="text" value="${obj.reps || '20-16-16-16-16'}" 
+                           onclick="event.stopPropagation()"
+                           style="flex:1; padding:8px; background:#000; border:1px solid #444; color:white; border-radius:4px;" 
+                           oninput="window.updateSelectionData(${selectedIndex}, 'reps', this.value)" 
+                           placeholder="Reps">
+                    <span style="font-size:1.8rem; cursor:pointer; margin-left:5px; ${linkActiveStyle}" 
+                          onclick="event.stopPropagation(); toggleSuperset(${selectedIndex})" 
+                          title="Superserie">🔗</span>
+                </div>
+            `;
+            d.onclick = null; 
+        } else {
+            d.innerHTML = `<img src="${e.img}" onerror="this.src='logo.png'"><span>${e.n}</span>`;
+            d.onclick = () => { 
+                currentRoutineSelections.push({ n: e.n, s: false, series: 5, reps: "20-16-16-16-16" });
+                renderExercises(sortedList); 
+                renderSelectedSummary(); 
+            };
+        }
+        c.appendChild(d);
+    });
+}
+
+// --- LEYENDA SUPERIOR CON SCROLL ---
+window.renderSelectedSummary = () => {
+    const div = document.getElementById('selected-summary'); 
+    div.innerHTML = ''; 
+    if(currentRoutineSelections.length > 0) {
+        const legendDiv = document.createElement('div');
+        legendDiv.className = 'editor-legend';
+        legendDiv.style.cssText = "display:flex; gap:8px; overflow-x:auto; padding:12px; background:#111; margin-bottom:15px; white-space:nowrap; border-bottom:1px solid #333; align-items:center; border-radius: 8px; position:sticky; top:0; z-index:10; cursor:pointer;";
+        
+        legendDiv.onclick = () => {
+            document.getElementById('exercise-selector-list').scrollTo({top:0, behavior:'smooth'});
+        };
+
+        let legendHTML = '<span style="font-size:0.7rem; color:#888; font-weight:bold; margin-right:5px;">ORDEN:</span>';
+        currentRoutineSelections.forEach((obj, idx) => {
+            const isLast = idx === currentRoutineSelections.length - 1;
+            const linkSymbol = obj.s ? '<span style="color:var(--accent-color); font-weight:bold;">🔗</span>' : '';
+            const separator = (isLast && !obj.s) ? '' : '<span style="color:#444">›</span>';
+            legendHTML += `<span onclick="event.stopPropagation(); document.getElementById('ex-card-${normalizeText(obj.n)}').scrollIntoView({behavior:'smooth', block:'center'});" style="font-size:0.85rem; color:#fff; cursor:pointer; text-decoration:underline; text-decoration-color:rgba(255,255,255,0.2);">${idx+1}. ${obj.n} ${linkSymbol}</span> ${separator}`;
+        });
+        legendDiv.innerHTML = legendHTML;
+        div.appendChild(legendDiv);
+    }
+};
+
+window.updateSelectionData = (idx, field, val) => {
+    if(currentRoutineSelections[idx]) {
+        currentRoutineSelections[idx][field] = field === 'series' ? (parseInt(val)||0) : val;
+    }
+};
+
+window.toggleSuperset = (idx) => {
+    if (idx < currentRoutineSelections.length - 1) { 
+        currentRoutineSelections[idx].s = !currentRoutineSelections[idx].s; 
+        renderExercises(EXERCISES); 
+        renderSelectedSummary();
+    } else {
+        alert("No puedes hacer superserie con el último ejercicio.");
+    }
+};
+
+window.removeSelection = (name) => { 
+    currentRoutineSelections = currentRoutineSelections.filter(x => x.n !== name); 
+    renderSelectedSummary(); 
+    window.filterExercises(document.getElementById('ex-search').value); 
+}
+
+// --- GUARDADO LOGICO (LIBRERÍA vs PERSONAL) ---
+window.saveRoutine = async () => {
+    const n = document.getElementById('editor-name').value; const s = window.currentRoutineSelections; 
+    if(!n || s.length === 0) return alert("❌ Faltan datos");
+    
+    const btn = document.getElementById('btn-save-routine'); btn.innerText = "💾 GUARDANDO...";
+    
+    // Si soy Admin, NO me la asigno (se queda en librería general).
+    // Si soy Atleta, me la asigno a mí mismo para verla.
+    let initialAssignments = [];
+    if (userData.role !== 'admin') {
+        initialAssignments.push(currentUser.uid);
+    }
+
+    try {
+        const data = { 
+            uid: currentUser.uid, 
+            name: n, 
+            exercises: s, 
+            createdAt: serverTimestamp(), 
+            assignedTo: initialAssignments 
+        };
+        
+        if(editingRoutineId) { 
+            await updateDoc(doc(db, "routines", editingRoutineId), { name: n, exercises: s }); 
+        } else { 
+            await addDoc(collection(db, "routines"), data); 
+        }
+        
+        alert("✅ Guardado"); switchTab('routines-view');
+    } catch(e) { alert("Error: " + e.message); } finally { btn.innerText = "GUARDAR"; }
+};
+
+window.cloneRoutine = async (id) => {
+    if(!confirm("¿Deseas clonar esta rutina para editarla?")) return;
+    try {
+        const docRef = doc(db, "routines", id);
+        const docSnap = await getDoc(docRef);
+        if (!docSnap.exists()) return alert("Error: No existe.");
+        
+        const originalData = docSnap.data();
+        const newName = prompt("Nombre copia:", `${originalData.name} (Copia)`);
+        if (!newName) return; 
+
+        const copyData = {
+            ...originalData,
+            name: newName,
+            uid: currentUser.uid, 
+            createdAt: serverTimestamp(),
+            assignedTo: [] // Resetear asignaciones
+        };
+
+        await addDoc(collection(db, "routines"), copyData);
+        alert(`✅ Clonada. Ahora puedes editar "${newName}".`);
+        window.loadAdminLibrary(); 
+    } catch (e) { alert("Error: " + e.message); }
+};
+
+window.delRoutine = async (id) => { if(confirm("¿Borrar rutina permanentemente?")) await deleteDoc(doc(db,"routines",id)); window.loadAdminLibrary(); };
+
+window.switchPose = (pose) => { currentPose = pose; document.getElementById('tab-front').classList.toggle('active', pose==='front'); document.getElementById('tab-back').classList.toggle('active', pose==='back'); updatePhotoDisplay(userData); };
+
+function updatePhotoDisplay(u) {
+    const prefix = currentPose === 'front' ? '' : '_back';
+    const b = u[`photoBefore${prefix}`] || '', a = u[`photoAfter${prefix}`] || '';
+    const dateB = u[`dateBefore${prefix}`] || '-', dateA = u[`dateAfter${prefix}`] || '-';
+    document.getElementById('img-before').src = b; document.getElementById('img-overlay').src = a;
+    document.getElementById('date-before').innerText = `ANTES (${dateB})`; document.getElementById('date-after').innerText = `AHORA (${dateA})`;
+    document.getElementById('slider-handle').style.left = '0%'; document.getElementById('img-overlay').style.clipPath = 'inset(0 0 0 0)';
+}
+
+window.uploadAvatar = (inp) => { 
+    if(inp.files[0]) { 
+        const file = inp.files[0]; const path = `users/${currentUser.uid}/avatar.jpg`; const storageRef = ref(storage, path);
+        uploadBytes(storageRef, file).then(async (snapshot) => {
+            const url = await getDownloadURL(snapshot.ref); await updateDoc(doc(db,"users",currentUser.uid), {photo: url}); userData.photo = url; window.loadProfile();
+        }).catch(e => alert("Error subiendo foto: " + e.message));
+    } 
+};
+
+window.loadCompImg = (inp, field) => { 
+    if(inp.files[0]) { 
+        const file = inp.files[0]; const r = new FileReader(); 
+        r.onload = (e) => { 
+            const img = new Image(); img.src = e.target.result; 
+            img.onload = async () => { 
+                const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d'); const scale = 800 / img.width; canvas.width = 800; canvas.height = img.height * scale; ctx.drawImage(img, 0, 0, canvas.width, canvas.height); 
+                canvas.toBlob(async (blob) => {
+                    const prefix = currentPose === 'front' ? 'front' : 'back'; const timestamp = Date.now(); const path = `users/${currentUser.uid}/progress/${timestamp}_${prefix}.jpg`; const storageRef = ref(storage, path);
+                    try {
+                        await uploadBytes(storageRef, blob); const url = await getDownloadURL(storageRef);
+                        const fieldPrefix = currentPose === 'front' ? '' : '_back'; const fieldName = field === 'before' ? `photoBefore${fieldPrefix}` : `photoAfter${fieldPrefix}`; const dateField = field === 'before' ? `dateBefore${fieldPrefix}` : `dateAfter${fieldPrefix}`; const today = new Date().toLocaleDateString(); const record = { date: today, url: url };
+                        let update = {}; update[fieldName] = url; update[dateField] = today; const histField = fieldPrefix === '' ? 'photoHistoryFront' : 'photoHistoryBack'; update[histField] = arrayUnion(record);
+                        await updateDoc(doc(db, "users", currentUser.uid), update); userData[fieldName] = url; userData[dateField] = today; if(!userData[histField]) userData[histField] = []; userData[histField].push(record); updatePhotoDisplay(userData);
+                    } catch(err) { alert("Error: " + err.message); }
+                }, 'image/jpeg', 0.8);
+            }; 
+        }; r.readAsDataURL(file); 
+    } 
+};
+
+window.deletePhoto = async (type) => { if(!confirm("¿Borrar?")) return; const prefix = currentPose === 'front' ? '' : '_back'; const f = type === 'before' ? `photoBefore${prefix}` : `photoAfter${prefix}`; let u={}; u[f]=""; await updateDoc(doc(db,"users",currentUser.uid),u); userData[f]=""; updatePhotoDisplay(userData); };
+
+window.moveSlider = (v) => { document.getElementById('img-overlay').style.clipPath = `inset(0 0 0 ${v}%)`; document.getElementById('slider-handle').style.left = `${v}%`; };
+
+window.switchCoachPose = (pose) => { coachCurrentPose = pose; document.getElementById('coach-tab-front').classList.toggle('active', pose==='front'); document.getElementById('coach-tab-back').classList.toggle('active', pose==='back'); updateCoachPhotoDisplay(pose); };
+
+function updateCoachPhotoDisplay(pose) {
+    const u = selectedUserObj; if(!u) return; const prefix = pose === 'front' ? '' : '_back'; const histField = prefix === '' ? 'photoHistoryFront' : 'photoHistoryBack'; const history = u[histField] || []; const pCont = document.getElementById('coach-photos-container');
+    pCont.innerHTML = `<div style="display:flex; gap:5px; margin-bottom:10px;"><select id="c-sel-before" onchange="window.updateCoachSliderImages()" style="margin:0; font-size:0.8rem;"></select><select id="c-sel-after" onchange="window.updateCoachSliderImages()" style="margin:0; font-size:0.8rem;"></select></div><div class="compare-wrapper" style="min-height:250px; background:#000; position:relative;"><div class="slider-labels"><span class="label-tag">ANTES</span><span class="label-tag">AHORA</span></div><img src="" id="c-img-before" class="compare-img" style="width:100%; height:100%; object-fit:contain;"><img src="" id="c-img-after" class="compare-img img-overlay" style="clip-path:inset(0 0 0 0); width:100%; height:100%; object-fit:contain;"><div class="slider-handle" id="coach-slider-handle" style="left:0%"><div class="slider-btn"></div></div></div><input type="range" min="0" max="100" value="0" style="width:100%; margin-top:15px;" oninput="window.moveCoachSlider(this.value)">`;
+    const selB = document.getElementById('c-sel-before'); const selA = document.getElementById('c-sel-after');
+    if(history.length === 0) { const current = u[`photoBefore${prefix}`]; const opt = new Option(current ? "Actual" : "Sin fotos", current || ""); selB.add(opt); selA.add(opt.cloneNode(true)); } 
+    else { history.forEach((h, i) => { const label = h.date || `Foto ${i+1}`; selB.add(new Option(label, h.url)); selA.add(new Option(label, h.url)); }); selB.selectedIndex = 0; selA.selectedIndex = history.length - 1; }
+    window.updateCoachSliderImages();
+}
+
+window.updateCoachSliderImages = () => { const urlB = document.getElementById('c-sel-before').value; const urlA = document.getElementById('c-sel-after').value; document.getElementById('c-img-before').src = urlB; document.getElementById('c-img-after').src = urlA; };
+window.moveCoachSlider = (v) => { document.getElementById('c-img-after').style.clipPath = `inset(0 0 0 ${v}%)`; document.getElementById('coach-slider-handle').style.left = `${v}%`; };
+
+function renderMeasureChart(canvasId, historyData) {
+    const ctx = document.getElementById(canvasId);
+    let instance = (canvasId === 'chartMeasures') ? measureChartInstance : coachMeasureChart;
+    if(instance) instance.destroy();
+    const labels = historyData.map(m => new Date(m.date.seconds*1000).toLocaleDateString());
+    const parts = [{k:'chest', l:'Pecho', c:'#FF5733'}, {k:'waist', l:'Cintura', c:'#00FF88'}, {k:'hip', l:'Cadera', c:'#3357FF'}, {k:'arm', l:'Brazo', c:'#FF33A8'}, {k:'thigh', l:'Muslo', c:'#F3FF33'}, {k:'calf', l:'Gemelo', c:'#FF8C00'}, {k:'shoulder', l:'Hombros', c:'#A133FF'}];
+    const datasets = parts.map(p => ({ label: p.l, data: historyData.map(h => h[p.k] || 0), borderColor: p.c, tension: 0.3, pointRadius: 2 }));
+    const newChart = new Chart(ctx, { type: 'line', data: { labels: labels, datasets: datasets }, options: { plugins: { legend: { display: true, labels: { color: '#888', boxWidth: 10, font: {size: 10} } } }, scales: { y: { grid: { color: '#333' } }, x: { display: false } }, maintainAspectRatio: false } });
+    if(canvasId === 'chartMeasures') measureChartInstance = newChart; else coachMeasureChart = newChart;
+}
+
+function renderBioChart(canvasId, historyData) {
+    const ctx = document.getElementById(canvasId);
+    let instance = (canvasId === 'chartBio') ? bioChartInstance : coachBioChart;
+    if(instance) instance.destroy();
+    const labels = historyData.map(m => new Date(m.date.seconds*1000).toLocaleDateString());
+    const datasets = [{ label: '% Músculo', data: historyData.map(h => h.muscle || 0), borderColor: '#00ffff', tension: 0.3, pointRadius: 3 }, { label: '% Grasa', data: historyData.map(h => h.fat || 0), borderColor: '#ffaa00', tension: 0.3, pointRadius: 3 }];
+    const newChart = new Chart(ctx, { type: 'line', data: { labels: labels, datasets: datasets }, options: { plugins: { legend: { display: true, labels: { color: '#ddd' } } }, scales: { y: { grid: { color: '#333' } }, x: { display: false } }, maintainAspectRatio: false } });
+    if(canvasId === 'chartBio') bioChartInstance = newChart; else coachBioChart = newChart;
+}
+
+function renderMuscleRadar(canvasId, stats) {
+    const ctx = document.getElementById(canvasId); if(!ctx) return;
+    if(canvasId === 'userMuscleChart' && userRadarChart) userRadarChart.destroy();
+    if(canvasId === 'coachMuscleChart' && coachRadarChart) coachRadarChart.destroy();
+    const muscleGroups = ["Pecho", "Espalda", "Cuádriceps", "Isquios", "Hombros", "Bíceps", "Tríceps", "Glúteos"];
+    const dataValues = muscleGroups.map(m => stats[m] || 0);
+    const newChart = new Chart(ctx, {
+        type: 'radar',
+        data: { labels: muscleGroups, datasets: [{ label: 'Volumen Relativo', data: dataValues, backgroundColor: 'rgba(255, 51, 51, 0.4)', borderColor: '#ff3333', pointBackgroundColor: '#ff3333', pointBorderColor: '#fff', pointHoverBackgroundColor: '#fff', pointHoverBorderColor: '#ff3333' }] },
+        options: { scales: { r: { angleLines: { color: '#333' }, grid: { color: '#333' }, pointLabels: { color: '#ccc', font: { size: 10 } }, ticks: { display: false, backdropColor: 'transparent' }, suggestedMin: 0 } }, plugins: { legend: { display: false } }, maintainAspectRatio: false }
+    });
+    if(canvasId === 'userMuscleChart') userRadarChart = newChart;
+    if(canvasId === 'coachMuscleChart') coachRadarChart = newChart;
+}
+
+window.loadProfile = async () => {
+    document.getElementById('profile-name').innerText = userData.name;
+    if(userData.photo) { document.getElementById('avatar-text').style.display='none'; document.getElementById('avatar-img').src = userData.photo; document.getElementById('avatar-img').style.display='block'; }
+    updatePhotoDisplay(userData);
+    
+    // --- PHOTO REMINDER AVISO ---
+    if(!userData.photo) {
+        const header = document.querySelector('.profile-header');
+        if(!document.getElementById('photo-nudge')) {
+             const nudge = document.createElement('div');
+             nudge.id = 'photo-nudge';
+             nudge.className = 'tip-box';
+             nudge.style.marginTop = '10px';
+             nudge.innerHTML = '📸 ¡Sube una foto para que tu Coach te reconozca mejor!';
+             header.parentNode.insertBefore(nudge, header.nextSibling);
+        }
+    } else {
+        const nudge = document.getElementById('photo-nudge');
+        if(nudge) nudge.remove();
+    }
+
+    if(userData.rankingOptIn) { document.getElementById('cfg-ranking').checked = true; document.getElementById('top-btn-ranking').classList.remove('hidden'); } 
+    else { document.getElementById('cfg-ranking').checked = false; document.getElementById('top-btn-ranking').classList.add('hidden'); }
+
+    if(userData.showBio) { document.getElementById('user-bio-section').classList.remove('hidden'); if(userData.bioHistory && userData.bioHistory.length > 0) renderBioChart('chartBio', userData.bioHistory); } else { document.getElementById('user-bio-section').classList.add('hidden'); }
+    if(userData.dietFile) document.getElementById('btn-diet-view').classList.remove('hidden'); else document.getElementById('btn-diet-view').classList.add('hidden');
+    if(userData.showSkinfolds) {
+        document.getElementById('user-skinfolds-section').classList.remove('hidden');
+        if(userData.skinfoldHistory && userData.skinfoldHistory.length > 0) {
+            const ctxF = document.getElementById('chartFat');
+            if(fatChartInstance) fatChartInstance.destroy();
+            const dataF = userData.skinfoldHistory.map(f => f.fat || 0);
+            const labels = userData.skinfoldHistory.map(f => new Date(f.date.seconds*1000).toLocaleDateString());
+            fatChartInstance = new Chart(ctxF, { type: 'line', data: { labels: labels, datasets: [{ label: '% Grasa', data: dataF, borderColor: '#ffaa00', tension: 0.3 }] }, options: { plugins: { legend: { display: false } }, scales: { y: { grid: { color: '#333' } }, x: { display: false } }, maintainAspectRatio: false } });
+        }
+    } else { document.getElementById('user-skinfolds-section').classList.add('hidden'); }
+    if(userData.showMeasurements) {
+        document.getElementById('user-measures-section').classList.remove('hidden');
+        if(userData.measureHistory && userData.measureHistory.length > 0) renderMeasureChart('chartMeasures', userData.measureHistory);
+    } else { document.getElementById('user-measures-section').classList.add('hidden'); }
+    if(userData.restTime) document.getElementById('cfg-rest-time').value = userData.restTime;
+    
+    if(userData.telegram) {
+        const tInput = document.getElementById('cfg-telegram');
+        if(tInput) tInput.value = userData.telegram;
+    }
+
+    document.getElementById('stat-workouts').innerText = userData.stats.workouts || 0;
+    document.getElementById('stat-kg').innerText = userData.stats.totalKg ? (userData.stats.totalKg/1000).toFixed(1)+'t' : 0;
+    document.getElementById('stat-sets').innerText = userData.stats.totalSets || 0;
+    document.getElementById('stat-reps').innerText = userData.stats.totalReps || 0;
+    const ctx = document.getElementById('weightChart'); 
+    if(chartInstance) chartInstance.destroy();
+    const rawData = userData.weightHistory;
+    const data = (rawData && rawData.length > 0) ? rawData : [70]; 
+    chartInstance = new Chart(ctx, { type:'line', data:{ labels:data.map((_,i)=>`T${i}`), datasets:[{label:'Kg', data:data, borderColor:'#ff3333', backgroundColor:'rgba(255,51,51,0.1)', fill:true, tension:0.4}] }, options:{plugins:{legend:{display:false}}, scales:{x:{display:false},y:{grid:{color:'#333'}}}, maintainAspectRatio:false} });
+    const histDiv = document.getElementById('user-history-list'); histDiv.innerHTML = "Cargando...";
+    try {
+        const q = query(collection(db, "workouts"), where("uid", "==", currentUser.uid));
+        const snap = await getDocs(q);
+        const workouts = snap.docs.map(d => ({id:d.id, ...d.data()})).sort((a,b) => b.date - a.date).slice(0, 5);
+        histDiv.innerHTML = workouts.length ? '' : "Sin historial.";
+        workouts.forEach(d => {
+            const date = d.date ? new Date(d.date.seconds*1000).toLocaleDateString() : '-';
+            const detailsStr = d.details ? encodeURIComponent(JSON.stringify(d.details)) : "";
+            const noteStr = d.note ? encodeURIComponent(d.note) : "";
+            const btnVer = d.details ? `<button class="btn-small btn-outline" style="margin:0; padding:2px 6px;" onclick="window.viewWorkoutDetails('${d.routine}', '${detailsStr}', '${noteStr}')">🔍</button>` : '';
+            histDiv.innerHTML += `<div class="history-row" style="grid-template-columns: 1fr 40px;"><div><span style="color:#accent-color">${date}</span> - ${d.routine}</div><div style="text-align:right;">${btnVer}</div></div>`;
+        });
+    } catch(e) { histDiv.innerHTML = "Error."; }
+    
+    renderMuscleRadar('userMuscleChart', userData.muscleStats || {});
+}
+
+window.openDietView = () => { if(!userData.dietFile) return; const url = `nutricion/${userData.dietFile}`; document.getElementById('diet-frame').src = url; window.openModal('modal-diet'); };
+window.closeDiet = () => { document.getElementById('diet-frame').src = "about:blank"; window.closeModal('modal-diet'); };
+window.assignDiet = async () => { const file = document.getElementById('coach-diet-select').value; if(!selectedUserCoach) return; const val = file === "" ? null : file; await updateDoc(doc(db, "users", selectedUserCoach), { dietFile: val }); alert("Dieta actualizada."); openCoachView(selectedUserCoach, selectedUserObj); };
+window.saveSelfConfig = async (feature, value) => { const update = {}; update[feature] = value; await updateDoc(doc(db, "users", currentUser.uid), update); userData[feature] = value; window.loadProfile(); };
+window.saveMeasurements = async () => { const data = { date: new Date(), chest: document.getElementById('m-chest').value, waist: document.getElementById('m-waist').value, hip: document.getElementById('m-hip').value, arm: document.getElementById('m-arm').value, thigh: document.getElementById('m-thigh').value, calf: document.getElementById('m-calf').value, shoulder: document.getElementById('m-shoulder').value }; await updateDoc(doc(db, "users", currentUser.uid), { measureHistory: arrayUnion(data), measurements: data }); alert("Guardado ✅"); window.loadProfile(); };
+window.calculateAndSaveSkinfolds = async () => { const s = { chest: parseFloat(document.getElementById('p-chest').value)||0, axilla: parseFloat(document.getElementById('p-axilla').value)||0, tricep: parseFloat(document.getElementById('p-tricep').value)||0, subscap: parseFloat(document.getElementById('p-subscap').value)||0, abdo: parseFloat(document.getElementById('p-abdo').value)||0, supra: parseFloat(document.getElementById('p-supra').value)||0, thigh: parseFloat(document.getElementById('p-thigh').value)||0 }; const sum = Object.values(s).reduce((a,b)=>a+b,0); const age = userData.age || 25, gender = userData.gender || 'male'; let bd = (gender === 'male') ? 1.112 - (0.00043499*sum) + (0.00000055*sum*sum) - (0.00028826*age) : 1.097 - (0.00046971*sum) + (0.00000056*sum*sum) - (0.00012828*age); const fat = ((495 / bd) - 450).toFixed(1); await updateDoc(doc(db, "users", currentUser.uid), { skinfoldHistory: arrayUnion({date: new Date(), fat: fat, skinfolds: s}), skinfolds: s, bodyFat: fat }); alert(`Grasa: ${fat}%. Guardado ✅`); window.loadProfile(); };
+window.saveBioEntry = async () => { const muscle = parseFloat(document.getElementById('bio-muscle').value) || 0; const fat = parseFloat(document.getElementById('bio-fat').value) || 0; if(muscle === 0 && fat === 0) return alert("Introduce datos válidos."); const entry = { date: new Date(), muscle: muscle, fat: fat }; await updateDoc(doc(db, "users", currentUser.uid), { bioHistory: arrayUnion(entry) }); alert("Datos Guardados ✅"); if(!userData.bioHistory) userData.bioHistory = []; userData.bioHistory.push(entry); window.loadProfile(); };
+
+window.saveConfig = async () => { 
+    const rt = document.getElementById('cfg-rest-time').value; 
+    const tg = document.getElementById('cfg-telegram')?.value || "";
+    await updateDoc(doc(db,"users",currentUser.uid), { restTime: parseInt(rt), telegram: tg }); 
+    userData.restTime = parseInt(rt); 
+    userData.telegram = tg;
+    alert("Ajustes Guardados"); 
+};
+
+window.contactCoach = () => {
+    showToast("💬 Abriendo chat... Te responderemos lo antes posible.");
+    setTimeout(() => {
+        window.open("https://t.me/fityhab", "_blank");
+    }, 1000);
+};
+
+window.savePhotoReminder = async () => { const d = document.getElementById('photo-day').value; const t = document.getElementById('photo-time').value; await updateDoc(doc(db,"users",currentUser.uid), { photoDay:d, photoTime:t }); userData.photoDay = d; userData.photoTime = t; alert("Alarma Guardada"); };
+window.addWeightEntry = async () => { const wStr = prompt("Introduce tu peso (kg):"); if(!wStr) return; const w = parseFloat(wStr.replace(',','.')); if(isNaN(w)) return alert("Número inválido"); let history = userData.weightHistory || []; history.push(w); try { await updateDoc(doc(db,"users",currentUser.uid), {weightHistory: history}); userData.weightHistory = history; window.loadProfile(); alert("✅ Peso Guardado"); } catch(e) { alert("Error al guardar: " + e.message); } };
+
+function saveLocalWorkout() { localStorage.setItem('fit_active_workout', JSON.stringify(activeWorkout)); }
+window.cancelWorkout = () => { if(confirm("⚠ ¿SEGURO QUE QUIERES CANCELAR?\nSe perderán los datos de este entrenamiento.")) { activeWorkout = null; localStorage.removeItem('fit_active_workout'); if(durationInt) clearInterval(durationInt); switchTab('routines-view'); } };
 
 window.startWorkout = async (rid) => {
-    initAudioEngine();
+    if(document.getElementById('cfg-wake').checked && 'wakeLock' in navigator) try{wakeLock=await navigator.wakeLock.request('screen');}catch(e){}
     try {
         const snap = await getDoc(doc(db,"routines",rid)); const r = snap.data();
-        let lastW = null; const q = query(collection(db, "workouts"), where("uid", "==", currentUser.uid));
-        const wSnap = await getDocs(q); 
-        const sameR = wSnap.docs.map(d=>d.data()).filter(d => d.routine === r.name).sort((a,b) => b.date - a.date);
-        if(sameR.length > 0) lastW = sameR[0].details;
+        let lastWorkoutData = null; const q = query(collection(db, "workouts"), where("uid", "==", currentUser.uid)); const wSnap = await getDocs(q); const sameRoutine = wSnap.docs.map(d=>d.data()).filter(d => d.routine === r.name).sort((a,b) => b.date - a.date); if(sameRoutine.length > 0) lastWorkoutData = sameRoutine[0].details;
 
-        activeWorkout = { name: r.name, startTime: Date.now(), exs: r.exercises.map(exObj => {
-            const name = typeof exObj === 'string' ? exObj : exObj.n; const data = getExerciseData(name);
-            const series = parseInt(exObj.series)||5; const reps = (exObj.reps || "12").split('-');
-            let sets = Array(series).fill().map((_, i) => ({ r: parseInt(reps[i]||reps[0]), w: 0, d: false, prev: '-', numDisplay: (i + 1).toString() }));
-            if(lastW) { const pEx = lastW.find(ld => ld.n === name); if(pEx?.s) { sets = sets.map((s, idx) => { if(pEx.s[idx]) s.prev = `${pEx.s[idx].r}x${pEx.s[idx].w}kg`; return s; }); } }
-            return { n:name, img:data.img, mInfo: data.mInfo, type: data.type, video: data.v, sets, superset: exObj.s || false, note: "" }; 
-        })};
+        const now = Date.now();
+        if(htmlAudioElement) { htmlAudioElement.play().then(() => { htmlAudioElement.pause(); }).catch(e => {}); } 
+        
+        activeWorkout = { name: r.name, startTime: now, exs: r.exercises.map(exObj => {
+                const isString = typeof exObj === 'string'; const name = isString ? exObj : exObj.n; const isSuperset = isString ? false : (exObj.s || false); const customSeriesNum = isString ? 5 : (parseInt(exObj.series) || 5); const customRepsPattern = isString ? "20-16-16-16-16" : (exObj.reps || "20-16-16-16-16"); const repsArray = customRepsPattern.split('-'); const data = getExerciseData(name);
+                let sets = Array(customSeriesNum).fill().map((_, i) => ({ r: repsArray[i] ? parseInt(repsArray[i]) : parseInt(repsArray[repsArray.length - 1]), w: 0, d: false, prev: '-', numDisplay: (i + 1).toString() }));
+                if(lastWorkoutData) { const prevEx = lastWorkoutData.find(ld => ld.n === name); if(prevEx && prevEx.s) { sets = sets.map((s, i) => { if(prevEx.s[i]) { const dLabel = prevEx.s[i].isDrop ? ' (D)' : ''; s.prev = `${prevEx.s[i].r}x${prevEx.s[i].w}kg${dLabel}`; } return s; }); } }
+                return { n:name, img:data.img, mInfo: data.mInfo, type: data.type, video: data.v, sets: sets, superset: isSuperset, note: "" }; 
+            })
+        };
         saveLocalWorkout(); renderWorkout(); switchTab('workout-view'); startTimerMini();
-    } catch(e) { console.error(e); }
+    } catch(e) { console.error(e); alert("Error iniciando entreno: " + e.message); }
 };
 
-function renderWorkout() {
-    const c = document.getElementById('workout-exercises'); if(!c) return; c.innerHTML = '';
-    activeWorkout.exs.forEach((e, i) => {
-        const card = document.createElement('div'); card.className = 'card';
-        if(e.superset) card.style.borderBottom = "2px dashed var(--accent-color)";
-        let setsHtml = `<div class="set-header"><div>#</div><div>PREV</div><div>REPS</div><div>KG</div><div></div></div>`;
-        e.sets.forEach((s, j) => {
-            const isDrop = s.numDisplay.includes('.');
-            setsHtml += `<div class="set-row ${isDrop ? 'is-dropset' : ''}">
-                <div class="set-num">${s.numDisplay}</div><div class="prev-data">${s.prev}</div>
-                <div><input type="number" value="${s.r}" onchange="window.uS(${i},${j},'r',this.value)"></div>
-                <div><input type="number" placeholder="kg" onchange="window.uS(${i},${j},'w',this.value)"></div>
-                <div style="display:flex; gap:2px;"><button class="btn-outline ${s.d ? 'btn-done' : ''}" onclick="window.tS(${i},${j})">${s.d ? '✓' : ''}</button>
-                ${!s.d && !isDrop ? `<button class="btn-small btn-outline" style="border-color:orange;color:orange;" onclick="window.addDropset(${i},${j})">D</button>`:''}</div>
-            </div>`;
-        });
-        card.innerHTML = `<div class="workout-split"><div class="workout-visual"><img src="${e.img}"></div><div class="workout-bars"><span>${e.mInfo.main}</span><div class="mini-track"><div class="mini-fill fill-primary"></div></div></div></div>
-            <h3 style="display:flex; justify-content:space-between; align-items:center;">${e.n} <div><button class="btn-small btn-outline" onclick="window.openNoteModal(${i})">📝</button> ${e.video ? `<button class="btn-small btn-outline" style="border-color:red;" onclick="window.openVideo('${e.video}')">🎥</button>` : ''} <button class="btn-small btn-outline" onclick="window.initSwap(${i})">🔄</button></div></h3>${setsHtml}
-            <div class="sets-actions"><button class="btn-set-control" onclick="window.toggleAllSets(${i})">✓ TODO</button><button class="btn-set-control" onclick="window.addSet(${i})">+ Serie</button></div>`;
-        c.appendChild(card);
-    });
-}
+window.addSet = (exIdx) => { const sets = activeWorkout.exs[exIdx].sets; sets.push({r:16, w:0, d:false, prev:'-', numDisplay: (sets.length + 1).toString()}); saveLocalWorkout(); renderWorkout(); };
+window.removeSet = (exIdx) => { if(activeWorkout.exs[exIdx].sets.length > 1) { activeWorkout.exs[exIdx].sets.pop(); saveLocalWorkout(); renderWorkout(); } };
+window.toggleAllSets = (exIdx) => { const ex = activeWorkout.exs[exIdx]; const allDone = ex.sets.every(s => s.d); const newState = !allDone; ex.sets.forEach(s => { s.d = newState; }); saveLocalWorkout(); renderWorkout(); if(newState) showToast("✅ Todas las series completadas"); };
+window.openNoteModal = (idx) => { noteTargetIndex = idx; const existingNote = activeWorkout.exs[idx].note || ""; document.getElementById('exercise-note-input').value = existingNote; window.openModal('modal-note'); };
+window.saveNote = () => { if (noteTargetIndex === null) return; const txt = document.getElementById('exercise-note-input').value.trim(); activeWorkout.exs[noteTargetIndex].note = txt; saveLocalWorkout(); renderWorkout(); window.closeModal('modal-note'); showToast(txt ? "📝 Nota guardada" : "🗑️ Nota borrada"); };
 
-window.uS = (i,j,k,v) => { if(activeWorkout.exs[i]?.sets[j]) { activeWorkout.exs[i].sets[j][k] = v; saveLocalWorkout(); } };
-window.tS = (i,j) => { 
-    const s = activeWorkout.exs[i].sets[j]; s.d = !s.d; 
-    if(s.d) {
-        const weight = parseFloat(s.w)||0; const reps = parseInt(s.r)||0;
-        if(weight > 0 && reps > 0) {
-            const rm = Math.round(weight / (1.0278 - (0.0278 * reps)));
-            const currentRecord = userData.rmRecords?.[activeWorkout.exs[i].n] || 0;
-            if(rm > currentRecord) { 
-                updateDoc(doc(db,"users",currentUser.uid), {[`rmRecords.${activeWorkout.exs[i].n}`]: rm});
-                showToast(`🔥 NUEVO RM: ${rm}kg!`);
-            }
+// --- GESTIÓN DE RANKING ---
+window.toggleRankingOptIn = async (val) => { try { await updateDoc(doc(db, "users", currentUser.uid), { rankingOptIn: val }); userData.rankingOptIn = val; const btnRank = document.getElementById('top-btn-ranking'); if(val) btnRank.classList.remove('hidden'); else btnRank.classList.add('hidden'); showToast(val ? "🏆 Ahora participas en el Ranking" : "👻 Ranking desactivado"); } catch(e) { alert("Error actualizando perfil"); } };
+
+window.changeRankFilter = (type, val) => {
+    if(type === 'time') { rankFilterTime = val; document.querySelectorAll('#ranking-view .pill').forEach(el => el.classList.remove('active')); document.getElementById(`time-${val}`).classList.add('active'); document.getElementById(`gender-${rankFilterGender}`).classList.add('active'); }
+    if(type === 'gender') { rankFilterGender = val; document.getElementById('gender-all').classList.remove('active'); document.getElementById('gender-male').classList.remove('active'); document.getElementById('gender-female').classList.remove('active'); document.getElementById(`gender-${val}`).classList.add('active'); }
+    if(type === 'cat') { rankFilterCat = val; document.querySelectorAll('.pill-cat').forEach(el => el.classList.remove('active')); document.getElementById(`cat-${val}`).classList.add('active'); }
+    window.loadRankingView();
+};
+
+window.loadRankingView = async () => {
+    switchTab('ranking-view'); const list = document.getElementById('ranking-list'); list.innerHTML = '<div style="text-align:center; margin-top:50px; color:#666;">⏳ Calculando posiciones...</div>';
+    try {
+        let orderByField = "", collectionField = "";
+        if (rankFilterCat === 'kg') collectionField = "kg"; else if (rankFilterCat === 'workouts') collectionField = "workouts"; else if (rankFilterCat === 'reps') collectionField = "reps"; else if (rankFilterCat === 'sets') collectionField = "sets"; else if (rankFilterCat === 'prs') collectionField = "prCount";
+
+        if (rankFilterTime === 'all') {
+            if (rankFilterCat === 'kg') orderByField = "stats.totalKg"; else if (rankFilterCat === 'workouts') orderByField = "stats.workouts"; else if (rankFilterCat === 'reps') orderByField = "stats.totalReps"; else if (rankFilterCat === 'sets') orderByField = "stats.totalSets"; else if (rankFilterCat === 'prs') orderByField = "stats.prCount";
+        } else {
+            const now = new Date();
+            let timeKey = "";
+            if(rankFilterTime === 'week') timeKey = `week_${getWeekNumber(now)}`;
+            if(rankFilterTime === 'month') timeKey = `month_${now.getFullYear()}_${now.getMonth()}`;
+            if(rankFilterTime === 'year') timeKey = `year_${now.getFullYear()}`;
+            if (rankFilterCat === 'prs') { list.innerHTML = "<div class='tip-box'>🏆 Los Récords solo se contabilizan en el Ranking Histórico.</div>"; return; }
+            orderByField = `stats_${timeKey}.${collectionField}`;
         }
-        openRest(); 
+
+        let q = query(collection(db, "users"), where("rankingOptIn", "==", true), orderBy(orderByField, "desc"), limit(50));
+        if (rankFilterGender !== 'all') { q = query(collection(db, "users"), where("rankingOptIn", "==", true), where("gender", "==", rankFilterGender), orderBy(orderByField, "desc"), limit(50)); }
+        
+        const snap = await getDocs(q); list.innerHTML = "";
+        if(snap.empty) { list.innerHTML = "<div class='tip-box'>No hay datos para este periodo/filtro todavía.</div>"; return; }
+
+        let rank = 1;
+        snap.forEach(d => {
+            const u = d.data(); const isMe = d.id === currentUser.uid;
+            let rawValue = 0;
+            if (rankFilterTime === 'all') { const fieldName = orderByField.split('.')[1]; rawValue = u.stats ? u.stats[fieldName] : 0; } 
+            else { const rootKey = orderByField.split('.')[0]; const subKey = orderByField.split('.')[1]; rawValue = (u[rootKey] && u[rootKey][subKey]) ? u[rootKey][subKey] : 0; }
+
+            let displayValue = rawValue;
+            if(rankFilterCat === 'kg') displayValue = (rawValue / 1000).toFixed(1) + 't'; else if(rankFilterCat === 'prs') displayValue = rawValue + ' 🏆'; else displayValue = rawValue.toLocaleString();
+
+            let posClass = ""; if(rank === 1) posClass = "ranking-1"; if(rank === 2) posClass = "ranking-2"; if(rank === 3) posClass = "ranking-3";
+            const avatarHtml = u.photo ? `<img src="${u.photo}" class="mini-avatar" style="width:35px;height:35px;">` : `<div class="mini-avatar-placeholder" style="width:35px;height:35px;font-size:0.8rem;">${u.name.charAt(0)}</div>`;
+            const div = document.createElement('div'); div.className = "ranking-row"; if(isMe) div.style.borderColor = "var(--accent-color)";
+            div.innerHTML = `<div class="ranking-pos ${posClass}">#${rank}</div><div style="margin-right:10px;">${avatarHtml}</div><div style="flex:1;"><div style="font-weight:bold; color:${isMe ? 'var(--accent-color)' : 'white'}">${u.name}</div><div style="font-size:0.65rem; color:#666;">${u.stats?.workouts || 0} entrenos totales</div></div><div class="rank-value-highlight">${displayValue}</div>`;
+            list.appendChild(div); rank++;
+        });
+
+    } catch(e) {
+        console.error("Rank Error:", e);
+        if(e.message.includes("index")) { const url = e.message.match(/https:\/\/\S+/); const link = url ? url[0] : "#"; list.innerHTML = `<div class="tip-box" style="cursor:pointer; border-color:red; color:#f88;" onclick="window.open('${link}', '_blank')">⚠️ SISTEMA: Falta Índice de Base de Datos.<br><b>Haz click AQUÍ para crearlo automáticamente</b></div>`; } 
+        else { list.innerHTML = `<div style="text-align:center; color:#666;">Error cargando datos.<br><small>${e.message}</small></div>`; }
     }
-    renderWorkout(); saveLocalWorkout(); 
 };
 
-window.addSet = (exIdx) => { activeWorkout.exs[exIdx].sets.push({r:12, w:0, d:false, prev:'-', numDisplay: (activeWorkout.exs[exIdx].sets.length + 1).toString()}); saveLocalWorkout(); renderWorkout(); };
-window.addDropset = (exIdx, setIdx) => {
-    const cur = activeWorkout.exs[exIdx].sets[setIdx]; cur.d = true;
-    activeWorkout.exs[exIdx].sets.splice(setIdx+1, 0, {r: Math.floor(cur.r*0.8), w: Math.floor(cur.w*0.7), d:false, prev:'DROPSET', numDisplay: cur.numDisplay+".5"});
-    saveLocalWorkout(); renderWorkout();
-};
-window.toggleAllSets = (idx) => { const ex = activeWorkout.exs[idx]; const state = !ex.sets.every(s=>s.d); ex.sets.forEach(s=>s.d=state); saveLocalWorkout(); renderWorkout(); };
+window.initSwap = (idx) => { swapTargetIndex = idx; const currentEx = activeWorkout.exs[idx]; const muscle = currentEx.mInfo.main; const list = document.getElementById('swap-list'); list.innerHTML = ''; const alternatives = EXERCISES.filter(e => getMuscleInfoByGroup(e.m).main === muscle && e.n !== currentEx.n); if(alternatives.length === 0) list.innerHTML = '<div style="padding:10px;">No hay alternativas directas.</div>'; else alternatives.forEach(alt => { const d = document.createElement('div'); d.style.padding = "10px"; d.style.borderBottom = "1px solid #333"; d.style.cursor = "pointer"; d.innerHTML = `<b>${alt.n}</b>`; d.onclick = () => window.performSwap(alt.n); list.appendChild(d); }); window.openModal('modal-swap'); };
+window.performSwap = (newName) => { if(swapTargetIndex === null) return; const data = getExerciseData(newName); const currentSets = activeWorkout.exs[swapTargetIndex].sets.map(s => ({...s, prev:'-', d: false})); activeWorkout.exs[swapTargetIndex].n = newName; activeWorkout.exs[swapTargetIndex].img = data.img; activeWorkout.exs[swapTargetIndex].video = data.v; activeWorkout.exs[swapTargetIndex].sets = currentSets; saveLocalWorkout(); renderWorkout(); window.closeModal('modal-swap'); };
 
-function startTimerMini() {
-    if(durationInt) clearInterval(durationInt);
-    durationInt = setInterval(() => {
-        if(!activeWorkout) return; const diff = Math.floor((Date.now() - activeWorkout.startTime)/1000);
-        const d = document.getElementById('mini-timer'); if(d) d.innerText = `${Math.floor(diff/60)}:${(diff%60).toString().padStart(2,'0')}`;
-    }, 1000);
-}
-
-function openRest() {
-    window.openModal('modal-timer'); let time = userData.restTime || 60; totalRestTime = time;
-    if(timerInt) clearInterval(timerInt);
-    timerInt = setInterval(() => {
-        time--; document.getElementById('timer-display').innerText = time;
-        const ring = document.getElementById('timer-progress-ring');
-        if(ring) ring.style.strokeDashoffset = 565 - (time / totalRestTime) * 565;
-        if(time <= 5 && time > 0) playTickSound(false);
-        if(time <= 0) { clearInterval(timerInt); window.closeModal('modal-timer'); playTickSound(true); }
-    }, 1000);
-}
-
-// --- ADMIN USERS LIST (AVISOS QUICK-ACCESS) ---
+// --- ADMIN / COACH LOGIC (LISTA CON ACCESO RÁPIDO A AVISOS) ---
 window.loadAdminUsers = async () => {
-    const l = document.getElementById('admin-list'); if(!l) return; l.innerHTML = '↻...';
+    const l = document.getElementById('admin-list'); l.innerHTML = '↻ Cargando...';
     try {
         let q = userData.role === 'assistant' ? query(collection(db, "users"), where("assignedCoach", "==", currentUser.uid)) : collection(db, "users");
         const s = await getDocs(q); l.innerHTML = '';
         
-        // Aviso Global
-        const gCard = document.createElement('div'); gCard.className = 'card'; gCard.style.borderLeft = '4px solid var(--warning-color)';
-        gCard.innerHTML = `<h4 style="color:var(--warning-color);">📢 AVISO GLOBAL (TODOS)</h4><input type="text" id="adm-notice-title" placeholder="Título..."><textarea id="adm-notice-text" placeholder="Mensaje..." rows="1"></textarea>
-            <div style="display:flex; gap:5px; margin-top:5px;"><input type="text" id="adm-notice-link" placeholder="Link" style="flex:1; margin:0;"><button class="btn-small btn-outline" onclick="document.getElementById('adm-notice-file').click()">📷</button><input type="file" id="adm-notice-file" class="hidden" accept="image/*"><button class="btn-small btn" onclick="window.publishNotice('all')" style="background:var(--warning-color); color:black;">ENVIAR</button></div>`;
-        l.appendChild(gCard);
+        const usersList = s.docs.map(d => ({id: d.id, ...d.data()}));
+        usersList.sort((a, b) => {
+            const dateA = a.lastWorkoutDate ? a.lastWorkoutDate.seconds : 0;
+            const dateB = b.lastWorkoutDate ? b.lastWorkoutDate.seconds : 0;
+            return dateB - dateA;
+        });
 
-        const usersList = s.docs.map(d => ({id: d.id, ...d.data()})).sort((a,b) => (b.lastWorkoutDate?.seconds || 0) - (a.lastWorkoutDate?.seconds || 0));
+        // --- PANEL AVISO GLOBAL (TODOS) ---
+        const globalNoticeDiv = document.createElement('div');
+        globalNoticeDiv.className = 'card';
+        globalNoticeDiv.style.borderLeft = '4px solid var(--warning-color)';
+        globalNoticeDiv.innerHTML = `
+            <h3 style="color:var(--warning-color); font-size:0.9rem; margin-bottom:10px;">📢 NUEVO AVISO GLOBAL (TODOS)</h3>
+            <input type="text" id="adm-notice-title" placeholder="Título del aviso..." style="margin-bottom:8px;">
+            <textarea id="adm-notice-text" placeholder="Mensaje..." rows="2" style="margin-bottom:8px;"></textarea>
+            <input type="text" id="adm-notice-link" placeholder="Link opcional" style="margin-bottom:8px;">
+            <input type="file" id="adm-notice-file" class="hidden" accept="image/*">
+            <div style="display:flex; gap:10px; margin-bottom:10px;">
+                <button class="btn-small btn-outline" onclick="document.getElementById('adm-notice-file').click()" style="flex:1;">📷 IMAGEN</button>
+                <button class="btn-small btn" onclick="window.publishNotice('all')" style="flex:1; background:var(--warning-color); color:black;">PUBLICAR</button>
+            </div>
+        `;
+        l.appendChild(globalNoticeDiv);
+
         usersList.forEach(u => {
-            const div = document.createElement('div'); div.className = "admin-user-row";
-            const av = u.photo ? `<img src="${u.photo}" class="mini-avatar">` : `<div class="mini-avatar-placeholder">${u.name.charAt(0)}</div>`;
-            div.innerHTML = `${av}<div style="flex:1; overflow:hidden;" onclick="window.openCoachView('${u.id}')"><div style="font-weight:bold; color:white;">${u.name}</div><div style="font-size:0.7rem; color:#666;">${u.email}</div></div>
-                <div style="display:flex; gap:5px;"><button class="btn-small btn-outline" style="border-color:var(--success-color); color:var(--success-color); padding:8px;" onclick="window.openNoticeModal('${u.id}', '${u.name}')">📩</button><button class="btn-small btn-outline" style="padding:8px;" onclick="window.openCoachView('${u.id}')">⚙️</button></div>`;
+            const avatarHtml = u.photo ? `<img src="${u.photo}" class="mini-avatar">` : `<div class="mini-avatar-placeholder">${u.name.charAt(0).toUpperCase()}</div>`;
+            const div = document.createElement('div'); 
+            div.className = "admin-user-row";
+            div.innerHTML = `
+                ${avatarHtml}
+                <div style="flex:1; overflow:hidden;" onclick="openCoachView('${u.id}', ${JSON.stringify(u).replace(/"/g, '&quot;')})">
+                    <div style="font-weight:bold; color:white;">${u.name}</div>
+                    <div style="font-size:0.7rem; color:#666;">${u.email}</div>
+                </div>
+                <div style="display:flex; gap:5px;">
+                    <button class="btn-small btn-outline" style="border-color:var(--success-color); color:var(--success-color);" onclick="window.openNoticeModal('${u.id}', '${u.name}')">📩</button>
+                    <button class="btn-small btn-outline" onclick="openCoachView('${u.id}', ${JSON.stringify(u).replace(/"/g, '&quot;')})">⚙️</button>
+                </div>
+            `;
             l.appendChild(div);
         });
-    } catch(e) { l.innerHTML = 'Error de permisos.'; }
+    } catch (e) { l.innerHTML = 'Error de permisos.'; }
 };
 
-window.openCoachView = async (uid) => {
-    selectedUserCoach = uid; const snap = await getDoc(doc(db, "users", uid)); selectedUserObj = {id: uid, ...snap.data()};
-    switchTab('coach-detail-view');
-    document.getElementById('coach-user-name').innerText = selectedUserObj.name;
-    document.getElementById('coach-user-email').innerText = selectedUserObj.email;
-    document.getElementById('coach-user-meta').innerText = `${selectedUserObj.age || '?'} años • ${selectedUserObj.height || '?'}cm`;
-    if(selectedUserObj.photo) { document.getElementById('coach-user-img').src = selectedUserObj.photo; document.getElementById('coach-user-img').style.display='block'; document.getElementById('coach-user-initial').style.display='none'; }
-    
-    // Assigned Routines
-    const rList = document.getElementById('coach-assigned-list'); rList.innerHTML = '';
-    const rSnap = await getDocs(collection(db, "routines"));
-    rSnap.forEach(d => { if(d.data().assignedTo?.includes(uid)) rList.innerHTML += `<div class="assigned-routine-item"><span>${d.data().name}</span><button onclick="window.unassignRoutine('${d.id}')">❌</button></div>`; });
-    
-    renderMuscleRadar('coachMuscleChart', selectedUserObj.muscleStats || {});
-    if(selectedUserObj.weightHistory) {
-        if(coachChart) coachChart.destroy();
-        coachChart = new Chart(document.getElementById('coachWeightChart'), { type:'line', data: { labels:selectedUserObj.weightHistory.map((_,i)=>i), datasets:[{label:'Kg', data:selectedUserObj.weightHistory, borderColor:'#ff3333'}] }, options:{maintainAspectRatio:false}});
-    }
-};
-
-// --- JACKSON-POLLOCK 7 & BIO ---
-window.calculateAndSaveSkinfolds = async () => {
-    const s = { chest: parseFloat(document.getElementById('p-chest').value)||0, axilla: parseFloat(document.getElementById('p-axilla').value)||0, tricep: parseFloat(document.getElementById('p-tricep').value)||0, subscap: parseFloat(document.getElementById('p-subscap').value)||0, abdo: parseFloat(document.getElementById('p-abdo').value)||0, supra: parseFloat(document.getElementById('p-supra').value)||0, thigh: parseFloat(document.getElementById('p-thigh').value)||0 };
-    const sum = Object.values(s).reduce((a,b)=>a+b,0);
-    const age = userData.age || 25;
-    let bd = userData.gender === 'male' ? 1.112 - (0.00043499*sum) + (0.00000055*sum*sum) - (0.00028826*age) : 1.097 - (0.00046971*sum) + (0.00000056*sum*sum) - (0.00012828*age);
-    const fat = ((495 / bd) - 450).toFixed(1);
-    await updateDoc(doc(db, "users", currentUser.uid), { skinfoldHistory: arrayUnion({date: new Date(), fat: fat, skinfolds: s}), bodyFat: fat });
-    alert(`Grasa: ${fat}%`); loadProfile();
-};
-
-// --- CHARTS ---
-function renderMuscleRadar(canvasId, stats) {
-    const ctx = document.getElementById(canvasId); if(!ctx) return;
-    const groups = ["Pecho", "Espalda", "Cuádriceps", "Isquios", "Hombros", "Bíceps", "Tríceps", "Glúteos"];
-    new Chart(ctx, { type: 'radar', data: { labels: groups, datasets: [{ label: 'Volumen', data: groups.map(m => stats[m] || 0), backgroundColor: 'rgba(255, 51, 51, 0.4)', borderColor: '#ff3333' }] }, options: { scales: { r: { angleLines: { color: '#333' }, grid: { color: '#333' }, ticks: { display: false } } }, maintainAspectRatio: false } });
-}
-function renderBioChart(id, h) {
-    new Chart(document.getElementById(id), { type: 'line', data: { labels: h.map(x => new Date(x.date.seconds*1000).toLocaleDateString()), datasets: [{ label: 'Músculo', data: h.map(x => x.muscle), borderColor: '#00ffff' }, { label: 'Grasa', data: h.map(x => x.fat), borderColor: '#ffaa00' }] }, options: { maintainAspectRatio: false } });
-}
-function renderMeasureChart(id, h) {
-    const parts = [{k:'chest', l:'Pecho', c:'#FF5733'}, {k:'waist', l:'Cintura', c:'#00FF88'}, {k:'hip', l:'Cadera', c:'#3357FF'}, {k:'arm', l:'Brazo', c:'#FF33A8'}];
-    new Chart(document.getElementById(id), { type: 'line', data: { labels: h.map(x => new Date(x.date.seconds*1000).toLocaleDateString()), datasets: parts.map(p => ({ label: p.l, data: h.map(x => x[p.k]||0), borderColor: p.c })) }, options: { maintainAspectRatio: false } });
-}
-
-// --- CSV EXPORT ---
-window.exportWorkoutHistory = async () => {
-    if (!window.tempHistoryCache) return alert("Carga datos primero");
-    let csv = "\uFEFFFecha,Rutina,Ejercicio,Series,Reps,Volumen\n";
-    window.tempHistoryCache.forEach(w => {
-        w.details.forEach(ex => {
-            let vol = ex.s.reduce((a,b)=>a+(b.r*b.w),0);
-            csv += `${new Date(w.date.seconds*1000).toLocaleDateString()},${w.routine},${ex.n},${ex.s.length},${ex.s.reduce((a,b)=>a+b.r,0)},${vol}\n`;
-        });
-    });
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob); const link = document.createElement("a");
-    link.href = url; link.download = `FitData_${userData.name}.csv`; link.click();
-};
-
-// --- LIBRERÍA & PLANES ---
 window.loadAdminLibrary = async () => {
-    const l = document.getElementById('admin-lib-list'); l.innerHTML = '↻';
-    const s = await getDocs(collection(db, "routines")); l.innerHTML = '<button class="btn" style="margin-bottom:15px;" onclick="window.openEditor()">+ NUEVA RUTINA</button>';
-    s.forEach(d => {
-        const r = d.data(); l.innerHTML += `<div class="assigned-routine-item"><b>${r.name}</b> <div><button onclick="window.cloneRoutine('${d.id}')">🖨</button><button onclick="window.openEditor('${d.id}')">✏️</button><button onclick="window.initMassAssignRoutine('${d.id}')">📤</button><button onclick="delRoutine('${d.id}')">🗑️</button></div></div>`;
-    });
+    const l = document.getElementById('admin-lib-list'); 
+    l.innerHTML = '↻ Cargando...';
+    try {
+        const uSnap = await getDocs(collection(db, "users")); const userMap = {}; uSnap.forEach(u => userMap[u.id] = u.data().name);
+        const s = await getDocs(collection(db, "routines")); 
+        l.innerHTML = '';
+        
+        const createBtn = document.createElement('button');
+        createBtn.className = 'btn';
+        createBtn.style.cssText = "width:100%; margin-bottom:15px; background:var(--accent-color); color:black; font-weight:bold;";
+        createBtn.innerText = "+ CREAR NUEVA RUTINA";
+        createBtn.onclick = () => { window.openEditor(); };
+        l.appendChild(createBtn);
+
+        s.forEach(d => {
+            const r = d.data(); const div = document.createElement('div'); div.className = "assigned-routine-item";
+            let author = r.uid === currentUser.uid ? "Mía (Admin)" : (userMap[r.uid] || "Admin");
+            
+            div.innerHTML = `
+                <div style="flex:1;">
+                    <b>${r.name}</b><br><span style="font-size:0.7rem; color:#666;">Creado por: ${author}</span>
+                </div>
+                <div style="display:flex; gap:5px;">
+                    <button class="btn-small btn-outline" style="margin:0; width:auto; border-color:#666; color:white;" onclick="window.cloneRoutine('${d.id}')" title="Clonar Rutina">🖨</button>
+                    <button class="btn-small btn-outline" style="margin:0; width:auto; border-color:#666; color:white;" onclick="window.openEditor('${d.id}')" title="Editar">✏️</button>
+                    <button class="btn-small btn" style="margin:0; width:auto;" onclick="window.initMassAssignRoutine('${d.id}')" title="Enviar a Atletas">📤</button>
+                    <button class="btn-small btn-outline" style="margin:0; width:auto; border-color:#666;" onclick="viewRoutineContent('${r.name}','${encodeURIComponent(JSON.stringify(r.exercises))}')" title="Ver">👁️</button>
+                    <button class="btn-small btn-danger" style="margin:0; width:auto; border:none;" onclick="delRoutine('${d.id}')" title="Borrar">🗑️</button>
+                </div>`;
+            l.appendChild(div);
+        });
+    } catch (e) { l.innerHTML = 'Error.'; }
 };
 
 window.loadAdminPlans = async () => {
-    const list = document.getElementById('admin-plans-list'); const sel = document.getElementById('plan-routine-selector');
-    const rSnap = await getDocs(collection(db, "routines")); sel.innerHTML = '';
-    rSnap.forEach(d => { sel.innerHTML += `<div class="selector-item"><input type="checkbox" class="plan-check" value="${d.id}" id="chk-${d.id}"><label for="chk-${d.id}">${d.data().name}</label></div>`; });
-    const pSnap = await getDocs(collection(db, "plans")); list.innerHTML = '';
-    pSnap.forEach(d => { const p = d.data(); list.innerHTML += `<div class="assigned-routine-item"><b>${p.name}</b><button class="btn-small btn" onclick="window.openAssignPlanModal('${d.id}')">📤</button></div>`; });
+    const list = document.getElementById('admin-plans-list'); const selector = document.getElementById('plan-routine-selector');
+    const routinesSnap = await getDocs(collection(db, "routines"));
+    selector.innerHTML = '';
+    routinesSnap.forEach(d => {
+        const div = document.createElement('div'); div.className = "selector-item";
+        div.innerHTML = `<input type="checkbox" class="plan-check selector-checkbox" value="${d.id}" id="chk-${d.id}"><label for="chk-${d.id}" class="selector-label">${d.data().name}</label>`;
+        selector.appendChild(div);
+    });
+    const plansSnap = await getDocs(collection(db, "plans")); list.innerHTML = '';
+    if(plansSnap.empty) { list.innerHTML = "<div style='text-align:center; padding:20px; color:#666;'>No hay planes creados.</div>"; return; }
+    const uSnap = await getDocs(collection(db, "users")); const userMap = {}; uSnap.forEach(u => userMap[u.id] = u.data().name);
+    plansSnap.forEach(d => {
+        const p = d.data(); const div = document.createElement('div'); div.className = "assigned-routine-item";
+        let author = p.createdBy === currentUser.uid ? "Mía (Admin)" : (userMap[p.createdBy] || "Admin");
+        div.innerHTML = `<div style="flex:1;"><b>${p.name}</b><br><span style="font-size:0.7rem; color:#666;">Creado por: ${author} • ${p.routines.length} Rutinas</span></div><div style="display:flex; gap:5px;"><button class="btn-small btn-outline" style="margin:0; width:auto; border-color:#666;" onclick="window.viewPlanContent('${p.name}', '${d.id}')">👁️</button><button class="btn-small btn" style="margin:0; width:auto;" onclick="window.openAssignPlanModal('${d.id}')">📤</button><button class="btn-small btn-danger" style="margin:0; width:auto; border:none;" onclick="window.deletePlan('${d.id}')">🗑️</button></div>`;
+        list.appendChild(div);
+    });
 };
 
-window.createPlan = async () => {
-    const n = document.getElementById('new-plan-name').value; const checks = Array.from(document.querySelectorAll('.plan-check:checked')).map(c => c.value);
-    if(!n || checks.length === 0) return alert("Faltan datos");
-    await addDoc(collection(db, "plans"), { name: n, routines: checks, createdBy: currentUser.uid });
-    window.loadAdminPlans();
+window.initMassAssignRoutine = async (rid) => {
+    assignMode = 'routine';
+    selectedRoutineForMassAssign = rid;
+    const list = document.getElementById('assign-users-list');
+    window.openModal('modal-assign-plan');
+    try {
+        const snap = await getDoc(doc(db, "routines", rid)); 
+        if (snap.exists()) document.getElementById('assign-plan-title').innerText = `Enviar "${snap.data().name}" a:`;
+        let q = userData.role === 'assistant' ? query(collection(db, "users"), where("assignedCoach", "==", currentUser.uid)) : collection(db, "users");
+        const uSnap = await getDocs(q); 
+        list.innerHTML = '';
+        uSnap.forEach(d => {
+            const u = d.data(); 
+            if (u.role === 'athlete') {
+                const div = document.createElement('div'); div.className = "selector-item";
+                div.innerHTML = `<input type="checkbox" class="user-mass-check selector-checkbox" value="${d.id}" id="u-${d.id}"><label for="u-${d.id}" class="selector-label">${u.name}</label>`;
+                list.appendChild(div);
+            }
+        });
+    } catch(e) { console.error(e); }
 };
-
-window.openAssignPlanModal = (id) => { assignMode = 'plan'; selectedPlanForMassAssign = id; window.openModal('modal-assign-plan'); loadMassUsers(); };
-window.initMassAssignRoutine = (id) => { assignMode = 'routine'; selectedRoutineForMassAssign = id; window.openModal('modal-assign-plan'); loadMassUsers(); };
-
-async function loadMassUsers() {
-    const list = document.getElementById('assign-users-list'); list.innerHTML = 'Cargando...';
-    const s = await getDocs(collection(db, "users")); list.innerHTML = '';
-    s.forEach(d => { if(d.data().role === 'athlete') list.innerHTML += `<div class="selector-item"><input type="checkbox" class="user-mass-check" value="${d.id}" id="u-${d.id}"><label for="u-${d.id}">${d.data().name}</label></div>`; });
-}
 
 window.distributePlan = async () => {
-    const ids = Array.from(document.querySelectorAll('.user-mass-check:checked')).map(c => c.value);
-    if(ids.length === 0) return alert("Selecciona atletas");
-    if(assignMode === 'plan') {
-        const p = await getDoc(doc(db, "plans", selectedPlanForMassAssign));
-        const promises = p.data().routines.map(rid => updateDoc(doc(db, "routines", rid), { assignedTo: arrayUnion(...ids) }));
-        await Promise.all(promises);
-    } else { await updateDoc(doc(db, "routines", selectedRoutineForMassAssign), { assignedTo: arrayUnion(...ids) }); }
-    alert("✅ Enviado"); window.closeModal('modal-assign-plan');
+    const checks = document.querySelectorAll('.user-mass-check:checked');
+    if(checks.length === 0) return alert("Selecciona al menos un atleta.");
+    const userIds = Array.from(checks).map(c => c.value); 
+    const btn = document.querySelector('#modal-assign-plan .btn'); 
+    btn.innerText = "ENVIANDO...";
+    try {
+        if (assignMode === 'plan' && selectedPlanForMassAssign) {
+            const planSnap = await getDoc(doc(db, "plans", selectedPlanForMassAssign));
+            const promises = planSnap.data().routines.map(rid => updateDoc(doc(db, "routines", rid), { assignedTo: arrayUnion(...userIds) }));
+            await Promise.all(promises); 
+            alert(`✅ Plan asignado correctamente.`);
+        } else if (assignMode === 'routine' && selectedRoutineForMassAssign) {
+            await updateDoc(doc(db, "routines", selectedRoutineForMassAssign), { assignedTo: arrayUnion(...userIds) });
+            alert(`✅ Rutina enviada correctamente.`);
+        }
+        window.closeModal('modal-assign-plan');
+    } catch(e) { alert("Error: " + e.message); } 
+    finally { btn.innerText = "✅ ENVIAR A SELECCIONADOS"; }
 };
 
-// --- MISC HANDLERS ---
-window.viewWorkoutDetails = (t, d, n) => {
-    const details = JSON.parse(decodeURIComponent(d)); let h = `<p><i>${decodeURIComponent(n||"")}</i></p><hr>`;
-    details.forEach(ex => { h += `<b>${ex.n}</b><br>`; ex.s.forEach((s, idx) => h += `<small>S${idx+1}: ${s.r}x${s.w}kg</small><br>`); });
-    document.getElementById('detail-title').innerText = t; document.getElementById('detail-content').innerHTML = h; window.openModal('modal-details');
-};
+async function openCoachView(uid, u) {
+    selectedUserCoach=uid; const freshSnap = await getDoc(doc(db, "users", uid)); const freshU = freshSnap.data(); selectedUserObj = freshU; 
+    switchTab('coach-detail-view'); document.getElementById('coach-user-name').innerText=freshU.name + (freshU.role === 'assistant' ? ' (Coach 🛡️)' : ''); document.getElementById('coach-user-email').innerText=freshU.email;
+    document.getElementById('coach-user-meta').innerText = `${freshU.gender === 'female' ? '♀️' : '♂️'} ${freshU.age} años • ${freshU.height} cm`;
+    
+    const telegramHtml = freshU.telegram ? `<div style="font-size:0.8rem; color:#0088cc; margin-top:5px;">Telegram: ${freshU.telegram}</div>` : '';
+    document.getElementById('coach-user-email').innerHTML += telegramHtml;
 
-window.initSwap = (idx) => {
-    swapTargetIndex = idx; const muscle = activeWorkout.exs[idx].mInfo.main;
-    const alternatives = EXERCISES.filter(e => e.m === muscle && e.n !== activeWorkout.exs[idx].n);
-    const list = document.getElementById('swap-list'); list.innerHTML = alternatives.length ? '' : 'No hay alternativas.';
-    alternatives.forEach(alt => { const d = document.createElement('div'); d.style.padding = "10px"; d.innerHTML = `<b>${alt.n}</b>`; d.onclick = () => { activeWorkout.exs[idx].n = alt.n; renderWorkout(); window.closeModal('modal-swap'); }; list.appendChild(d); });
-    window.openModal('modal-swap');
-};
+    if(freshU.photo) { document.getElementById('coach-user-img').src = freshU.photo; document.getElementById('coach-user-img').style.display = 'block'; document.getElementById('coach-user-initial').style.display = 'none'; }
+    else { document.getElementById('coach-user-img').style.display = 'none'; document.getElementById('coach-user-initial').style.display = 'block'; document.getElementById('coach-user-initial').innerText = freshU.name.charAt(0).toUpperCase(); }
+    document.getElementById('pending-approval-banner').classList.toggle('hidden', freshU.approved);
+    updateCoachPhotoDisplay('front');
+    document.getElementById('coach-toggle-bio').checked = !!freshU.showBio; document.getElementById('coach-toggle-skinfolds').checked = !!freshU.showSkinfolds; document.getElementById('coach-toggle-measures').checked = !!freshU.showMeasurements; document.getElementById('coach-toggle-videos').checked = !!freshU.showVideos;
+    const dietSel = document.getElementById('coach-diet-select'); dietSel.innerHTML = '<option value="">-- Sin Dieta --</option>';
+    AVAILABLE_DIETS.forEach(d => { const opt = new Option(d.name, d.file); if(freshU.dietFile === d.file) opt.selected = true; dietSel.appendChild(opt); });
 
-window.openVideo = (url) => { 
-    let id = url.includes("v=") ? url.split("v=")[1] : url.split("/").pop();
-    document.getElementById('youtube-frame').src = `https://www.youtube.com/embed/${id}?autoplay=1`;
-    window.openModal('modal-video');
-};
+    const rList = document.getElementById('coach-assigned-list'); rList.innerHTML = 'Cargando...';
+    const allRoutinesSnap = await getDocs(collection(db, "routines")); allRoutinesCache = [];
+    const s = document.getElementById('coach-routine-select'); s.innerHTML = '<option value="">Selecciona rutina...</option>';
+    allRoutinesSnap.forEach(r => { const data = r.data(); allRoutinesCache.push({id: r.id, ...data}); s.add(new Option(data.name, r.id)); });
+    const pSelect = document.getElementById('coach-plan-select'); pSelect.innerHTML = '<option value="">Selecciona plan...</option>';
+    const allPlansSnap = await getDocs(collection(db, "plans")); allPlansSnap.forEach(p => pSelect.add(new Option(p.data().name, p.id)));
+    const assigned = allRoutinesCache.filter(r => (r.assignedTo || []).includes(uid)); rList.innerHTML = assigned.length ? '' : 'Ninguna rutina.';
+    assigned.forEach(r => { const div = document.createElement('div'); div.className = "assigned-routine-item"; div.innerHTML = `<span>${r.name}</span><button style="background:none;border:none;color:#f55;font-weight:bold;cursor:pointer;" onclick="window.unassignRoutine('${r.id}')">❌</button>`; rList.appendChild(div); });
+    if(freshU.bioHistory) { document.getElementById('coach-view-bio').classList.remove('hidden'); renderBioChart('coachBioChart', freshU.bioHistory); }
+    if(freshU.skinfoldHistory) { document.getElementById('coach-view-skinfolds').classList.remove('hidden'); const dataF = freshU.skinfoldHistory.map(f => f.fat || 0); const labels = freshU.skinfoldHistory.map(f => new Date(f.date.seconds*1000).toLocaleDateString()); if(coachFatChart) coachFatChart.destroy(); coachFatChart = new Chart(document.getElementById('coachFatChart'), { type: 'line', data: { labels: labels, datasets: [{ label: '% Grasa', data: dataF, borderColor: '#ffaa00' }] }, options: { maintainAspectRatio: false } }); }
+    if(freshU.measureHistory) { document.getElementById('coach-view-measures').classList.remove('hidden'); renderMeasureChart('coachMeasuresChart', freshU.measureHistory); }
+    
+    renderMuscleRadar('coachMuscleChart', freshU.muscleStats || {});
 
-window.saveConfig = async () => {
-    const rt = document.getElementById('cfg-rest-time').value; const tg = document.getElementById('cfg-telegram')?.value || "";
-    await updateDoc(doc(db,"users",currentUser.uid), { restTime: parseInt(rt), telegram: tg }); alert("Guardado");
-};
-
-window.contactCoach = () => window.open("https://t.me/fityhab", "_blank");
-window.logout = () => signOut(auth).then(()=>location.reload());
-window.viewFullImage = (src) => { document.getElementById('full-image-src').src = src; window.openModal('modal-image-viewer'); };
-
-function injectTelegramUI() {
-    const target = document.getElementById('cfg-rest-time');
-    if (target && !document.getElementById('tg-wrapper')) {
-        const div = document.createElement('div'); div.id = "tg-wrapper"; div.style.cssText = "margin-top:20px;text-align:center;border-top:1px solid #222;padding-top:15px;";
-        div.innerHTML = `<label style="color:#aaa;font-size:0.8rem;">Usuario Telegram</label><input type="text" id="cfg-telegram" value="${userData.telegram||''}" style="text-align:center;"><button class="btn" onclick="window.contactCoach()">Contactar Coach</button>`;
-        target.parentElement?.insertAdjacentElement('afterend', div);
-    }
+    const st = freshU.stats || {}; document.getElementById('coach-stats-text').innerHTML = `<div class="stat-pill"><b>${st.workouts||0}</b><span>ENTRENOS</span></div><div class="stat-pill"><b>${(st.totalKg/1000||0).toFixed(1)}t</b><span>CARGA</span></div><div class="stat-pill"><b>${freshU.age||'N/D'}</b><span>AÑOS</span></div>`;
+    if(coachChart) coachChart.destroy(); const wData = freshU.weightHistory || [70]; coachChart = new Chart(document.getElementById('coachWeightChart'), { type:'line', data: { labels:wData.map((_,i)=>i+1), datasets:[{label:'Kg', data:wData, borderColor:'#ff3333'}] }, options:{ maintainAspectRatio: false}});
+    const hList = document.getElementById('coach-history-list'); hList.innerHTML = 'Cargando...';
+    const wSnap = await getDocs(query(collection(db,"workouts"), where("uid","==",uid))); hList.innerHTML = wSnap.empty ? 'Sin datos.' : '';
+    wSnap.docs.map(doc => ({id: doc.id, ...doc.data()})).sort((a,b) => b.date - a.date).slice(0, 10).forEach(d => {
+        const date = d.date ? new Date(d.date.seconds*1000).toLocaleDateString() : '-';
+        hList.innerHTML += `<div class="history-row" style="grid-template-columns: 60px 1fr 30px 80px;"><div>${date}</div><div style="overflow:hidden; text-overflow:ellipsis;">${d.routine}</div><div>${d.rpe === 'Suave' ? '🟢' : (d.rpe === 'Duro' ? '🟠' : '🔴')}</div><button class="btn-small btn-outline" onclick="window.viewWorkoutDetails('${d.routine}', '${encodeURIComponent(JSON.stringify(d.details))}', '${encodeURIComponent(d.note||"")}')">Ver</button></div>`;
+    });
 }
 
-// --- BOOTSTRAP EVENTOS ---
-document.getElementById('btn-login').onclick = () => signInWithEmailAndPassword(auth, document.getElementById('login-email').value, document.getElementById('login-pass').value).catch(e => alert(e.message));
-document.getElementById('btn-register').onclick = async () => {
+window.exportWorkoutHistory = async () => {
+    const btn = event.currentTarget; const originalContent = btn.innerHTML;
+    if (!window.tempHistoryCache || window.tempHistoryCache.length === 0) { return alert("Primero selecciona un ejercicio en la gráfica para cargar los datos."); }
+    btn.disabled = true; btn.innerHTML = `<span>⏳</span> GENERANDO...`;
     try {
-        const c = await createUserWithEmailAndPassword(auth, document.getElementById('reg-email').value, document.getElementById('reg-pass').value);
-        await setDoc(doc(db, "users", c.user.uid), {
-            name: document.getElementById('reg-name').value, email: document.getElementById('reg-email').value, role: 'athlete', approved: false,
-            secretCode: document.getElementById('reg-code').value, joined: serverTimestamp(), stats: {workouts:0, totalKg:0}, readNotices: []
+        let csvContent = "\uFEFF"; csvContent += "Fecha,Rutina,Ejercicio,Series,Reps Totales,Volumen Ejercicio (kg),RPE,Nota\n";
+        window.tempHistoryCache.forEach(w => {
+            const date = w.date ? new Date(w.date.seconds * 1000).toLocaleDateString('es-ES') : "-";
+            const routine = `"${(w.routine || "Sin nombre").replace(/"/g, '""')}"`;
+            w.details.forEach(ex => {
+                let exVolumen = 0; let totalReps = 0;
+                ex.s.forEach(set => { const r = parseInt(set.r) || 0; const weight = parseFloat(set.w) || 0; totalReps += r; exVolumen += (r * weight); });
+                csvContent += `${date},${routine},"${ex.n}",${ex.s.length},${totalReps},${exVolumen},${w.rpe},"${(w.note||'').replace(/"/g,'""')}"\n`;
+            });
         });
-    } catch(e) { alert(e.message); }
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob); const link = document.createElement("a");
+        link.setAttribute("href", url); link.setAttribute("download", `FitData_${userData.name}.csv`);
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    } catch (e) { alert("Error al generar CSV."); } 
+    finally { btn.disabled = false; btn.innerHTML = originalContent; }
 };
+
+window.viewWorkoutDetails = (title, detailsEnc, noteEnc) => {
+    const details = JSON.parse(decodeURIComponent(detailsEnc));
+    let html = `<p><i>${decodeURIComponent(noteEnc || "")}</i></p><hr style="margin:10px 0; border:0; border-top:1px solid #333;">`;
+    details.forEach(ex => {
+        html += `<div style="margin-bottom:10px;"><b>${ex.n}</b><br>`;
+        ex.s.forEach((s, idx) => html += `<small>S${idx+1}: ${s.r}x${s.w}kg ${s.isDrop ? '💧' : ''}</small><br>`);
+        html += `</div>`;
+    });
+    document.getElementById('detail-title').innerText = title;
+    document.getElementById('detail-content').innerHTML = html;
+    window.openModal('modal-details');
+};
+
+// --- DOM HANDLERS ---
+document.getElementById('btn-register').onclick=async()=>{
+    const secretCode = document.getElementById('reg-code').value;
+    const tgUser = document.getElementById('reg-telegram')?.value || ""; 
+    try{ 
+        const c=await createUserWithEmailAndPassword(auth,document.getElementById('reg-email').value,document.getElementById('reg-pass').value);
+        await setDoc(doc(db,"users",c.user.uid),{
+            name:document.getElementById('reg-name').value, email:document.getElementById('reg-email').value, 
+            secretCode, telegram: tgUser, approved: false, role: 'athlete', 
+            gender:document.getElementById('reg-gender').value, age:parseInt(document.getElementById('reg-age').value), height:parseInt(document.getElementById('reg-height').value), 
+            weightHistory: [], measureHistory: [], skinfoldHistory: [], bioHistory: [], prs: {}, stats: {workouts:0, totalKg:0, totalSets:0, totalReps:0}, joined: serverTimestamp(), readNotices: []
+        });
+    }catch(e){alert("Error: " + e.message);}
+};
+document.getElementById('btn-login').onclick=()=>signInWithEmailAndPassword(auth,document.getElementById('login-email').value,document.getElementById('login-pass').value).catch(e=>alert(e.message));
