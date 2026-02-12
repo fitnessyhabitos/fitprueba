@@ -431,63 +431,62 @@ input:checked + .slider { background-color: var(--accent-color); } input:checked
     font-family: monospace; font-size: 1.1rem; font-weight: bold; color: var(--success-color);
 }
 
-/* --- ESTILOS DETALLE ENTRENO (TICKET STYLE) --- */
+/* --- ESTILOS DETALLE ENTRENO (COMPACTO PRO) --- */
 
-/* Nota estilo caja oscura con borde */
 .detail-note-box {
     background: #111;
     border: 1px solid #333;
-    border-radius: 8px;
-    padding: 12px;
-    color: #ccc;
-    font-size: 0.9rem;
+    border-radius: 6px;
+    padding: 8px 10px; /* Menos padding */
+    color: #bbb;
+    font-size: 0.8rem; /* Letra un poco más pequeña */
     font-style: italic;
-    margin-bottom: 25px;
-    border-left: 3px solid var(--warning-color); /* Borde naranja a la izquierda */
+    margin-bottom: 15px;
+    border-left: 2px solid var(--warning-color);
     display: flex;
     align-items: center;
     gap: 8px;
 }
 
-/* Tarjeta de ejercicio limpia */
 .detail-exercise-card {
-    margin-bottom: 20px;
-    padding-bottom: 15px;
+    margin-bottom: 12px; /* Menos margen entre ejercicios */
+    padding-bottom: 10px;
     border-bottom: 1px solid #222;
 }
 
-/* Título del ejercicio en Rojo y negrita */
 .detail-exercise-title {
-    color: var(--accent-color); /* El rojo de tu app */
+    color: var(--accent-color);
     font-weight: bold;
-    font-size: 1rem;
-    margin-bottom: 12px;
-    letter-spacing: 0.5px;
+    font-size: 0.9rem; /* Título más compacto */
+    margin-bottom: 6px;
+    letter-spacing: 0.3px;
 }
 
-/* Grid para las series (Cajas) */
+/* Flex en lugar de Grid para ajuste perfecto */
 .detail-sets-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(95px, 1fr)); /* Auto-ajuste */
-    gap: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px; /* Espacio mínimo entre cajitas */
 }
 
-/* Diseño de cada cajita de serie */
+/* Diseño de cajita "Pastilla" */
 .detail-set-badge {
-    background: #1f1f1f;
+    background: #1a1a1a;
     border: 1px solid #333;
-    border-radius: 6px;
-    padding: 8px 5px;
+    border-radius: 4px;
+    padding: 3px 8px; /* Muy compacto */
     text-align: center;
-    font-size: 0.85rem;
+    font-size: 0.75rem; /* Texto pequeño y nítido */
     color: #eee;
-    font-family: monospace; /* Para que los números se alineen bien */
+    font-family: monospace;
+    display: flex;
+    align-items: center;
+    white-space: nowrap; /* Fuerza una sola línea */
 }
 
-/* El número de serie (#1) en gris oscuro */
 .detail-set-num {
     color: #666;
-    font-size: 0.75rem;
-    margin-right: 4px;
-    font-weight: normal;
+    font-size: 0.65rem;
+    margin-right: 6px;
+    font-weight: bold;
 }
