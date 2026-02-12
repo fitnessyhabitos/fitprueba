@@ -4,7 +4,7 @@ import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, q
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 import { EXERCISES } from './data.js';
 
-console.log("⚡ FIT DATA: App Iniciada (v7.5 - Audio Boost & Smart Notices)...");
+console.log("⚡ FIT DATA: App Iniciada (v7.6 - Dropset Highlight)...");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDW40Lg6QvBc3zaaA58konqsH3QtDrRmyM",
@@ -42,8 +42,8 @@ let noteTargetIndex = null;
 let communityUnsubscribe = null; 
 
 // Variables para control de avisos
-let currentNoticeId = null; // ID del aviso que se está mostrando actualmente
-let currentNoticeType = null; // 'GLOBAL' o 'INDIVIDUAL'
+let currentNoticeId = null; 
+let currentNoticeType = null; 
 
 // Filtros Ranking
 let rankFilterTime = 'all';       
@@ -66,7 +66,7 @@ let swapTargetIndex = null;
 // Variables de Asignación Masiva
 let selectedPlanForMassAssign = null; 
 let selectedRoutineForMassAssign = null;
-let assignMode = 'plan'; // 'plan' o 'routine'
+let assignMode = 'plan'; 
 
 // Variable para Sistema de Avisos (Admin)
 let noticeTargetUid = null; 
@@ -130,7 +130,6 @@ function initCommunityListener() {
                 if (now - workoutTime < 60 && w.uid !== currentUser.uid) {
                     showToast(`🔥 Alguien terminó: ${w.routine}`);
                     if(document.getElementById('cfg-sound')?.checked) {
-                         // Sonido breve de comunidad
                          if(audioCtx && audioCtx.state !== 'suspended'){
                             const osc = audioCtx.createOscillator();
                             const g = audioCtx.createGain();
@@ -187,17 +186,15 @@ function playTickSound(isFinal = false) {
     if(!audioCtx) return;
     if (audioCtx.state === 'suspended') audioCtx.resume();
 
-    // Si es final, usamos la función de alarma larga
     if (isFinal) {
         playFinalAlarm();
         return;
     }
 
-    // Beeps normales de cuenta atrás
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     
-    osc.frequency.value = 1000; // Tono agudo estándar
+    osc.frequency.value = 1000; 
     osc.type = 'sine';
     
     osc.connect(gain);
@@ -206,7 +203,6 @@ function playTickSound(isFinal = false) {
     const now = audioCtx.currentTime;
     osc.start(now);
     
-    // Beep muy corto
     gain.gain.setValueAtTime(0.8, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
     
@@ -218,7 +214,6 @@ function playFinalAlarm() {
     if(!audioCtx) return;
     const now = audioCtx.currentTime;
 
-    // Creamos 3 osciladores para un acorde/secuencia disonante y llamativa
     const osc1 = audioCtx.createOscillator();
     const osc2 = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
@@ -227,23 +222,20 @@ function playFinalAlarm() {
     osc2.connect(gain);
     gain.connect(audioCtx.destination);
 
-    // Configuración tipo "Alarma Nuclear" o "Silbato"
-    osc1.type = 'square'; // Sonido "áspero" para cortar la música
+    osc1.type = 'square'; 
     osc2.type = 'sawtooth';
 
-    // Secuencia de frecuencias
-    osc1.frequency.setValueAtTime(880, now); // La
-    osc1.frequency.linearRampToValueAtTime(1760, now + 0.1); // Slide arriba
+    osc1.frequency.setValueAtTime(880, now); 
+    osc1.frequency.linearRampToValueAtTime(1760, now + 0.1); 
     osc1.frequency.setValueAtTime(880, now + 0.2); 
     osc1.frequency.linearRampToValueAtTime(1760, now + 0.3);
     
-    osc2.frequency.setValueAtTime(440, now); // Octava abajo de base
-    osc2.frequency.linearRampToValueAtTime(880, now + 1.5); // Slide largo
+    osc2.frequency.setValueAtTime(440, now); 
+    osc2.frequency.linearRampToValueAtTime(880, now + 1.5); 
 
-    // Volumen alto y sostenido
     gain.gain.setValueAtTime(0.8, now);
-    gain.gain.linearRampToValueAtTime(0.8, now + 1.0); // Mantener volumen
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 1.5); // Fade out final
+    gain.gain.linearRampToValueAtTime(0.8, now + 1.0); 
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 1.5); 
 
     osc1.start(now);
     osc2.start(now);
@@ -274,13 +266,12 @@ window.openNoticeEditor = async (uid) => {
     noticeTargetUid = uid; 
     document.getElementById('notice-title').value = '';
     document.getElementById('notice-text').value = '';
-    document.getElementById('notice-img-file').value = ''; // Reset file input
+    document.getElementById('notice-img-file').value = ''; 
     document.getElementById('notice-link').value = '';
     
     const modalTitle = document.getElementById('notice-modal-title');
     modalTitle.innerText = uid === 'GLOBAL' ? '📢 CREAR AVISO PARA TODOS' : '📢 AVISO INDIVIDUAL';
     
-    // Intentar cargar aviso existente para editar (solo texto/título, la imagen se sobreescribe si se sube otra)
     try {
         let existing = null;
         if(uid === 'GLOBAL') {
@@ -316,16 +307,13 @@ window.saveNotice = async () => {
     try {
         let imgUrl = "";
         
-        // 1. Si hay archivo, subirlo a Storage
         if(fileInp.files.length > 0) {
             const file = fileInp.files[0];
-            // Ruta: notices/global/timestamp.jpg o notices/UID/timestamp.jpg
             const path = `notices/${noticeTargetUid === 'GLOBAL' ? 'global' : noticeTargetUid}/${Date.now()}.jpg`;
             const storageRef = ref(storage, path);
             const snapshot = await uploadBytes(storageRef, file);
             imgUrl = await getDownloadURL(snapshot.ref);
         } else {
-            // Si no hay archivo nuevo, intentar mantener el anterior (recuperando de DB)
              if(noticeTargetUid === 'GLOBAL') {
                  const snap = await getDoc(doc(db, "settings", "globalNotice"));
                  if(snap.exists()) imgUrl = snap.data().img || "";
@@ -335,11 +323,10 @@ window.saveNotice = async () => {
              }
         }
 
-        // ID único para el aviso (usamos timestamp)
         const noticeId = Date.now().toString();
 
         const noticeData = {
-            id: noticeId, // ID vital para saber si ya se leyó
+            id: noticeId, 
             title: t, 
             text: txt, 
             img: imgUrl, 
@@ -352,7 +339,6 @@ window.saveNotice = async () => {
             await setDoc(doc(db, "settings", "globalNotice"), noticeData);
             alert("✅ Aviso Global Publicado");
         } else {
-            // Guardar en el usuario
             await updateDoc(doc(db, "users", noticeTargetUid), { coachNotice: noticeData });
             alert("✅ Aviso Individual Enviado");
             if(document.getElementById('tab-users').classList.contains('active')) window.loadAdminUsers();
@@ -396,10 +382,8 @@ async function checkNotices() {
             const notice = snap.data();
             if(!notice.active) return;
 
-            // Verificar si ya se ha dado a "Entendido" a ESTE aviso concreto (por ID)
             const dismissedId = localStorage.getItem('dismissed_global_notice_id');
             
-            // Si el ID del aviso actual es diferente al guardado, lo mostramos
             if(notice.id && notice.id !== dismissedId) {
                 showNoticeModal(notice, "AVISO DE LA COMUNIDAD", 'GLOBAL');
             }
@@ -419,7 +403,6 @@ function showNoticeModal(notice, headerTitle, type) {
     if(notice.img) {
         imgEl.src = notice.img;
         imgEl.classList.remove('hidden');
-        // Habilitar click para ver en grande
         imgEl.onclick = () => window.viewFullImage(notice.img);
     } else {
         imgEl.classList.add('hidden');
@@ -437,17 +420,13 @@ function showNoticeModal(notice, headerTitle, type) {
 }
 
 window.dismissNotice = async () => {
-    // Lógica para no volver a mostrar
     if (currentNoticeType === 'GLOBAL') {
-        // Guardamos el ID en local para no volver a verlo
         if(currentNoticeId) {
             localStorage.setItem('dismissed_global_notice_id', currentNoticeId);
         }
     } else if (currentNoticeType === 'INDIVIDUAL') {
-        // Desactivamos el aviso en la DB del usuario
         try {
             await updateDoc(doc(db, "users", currentUser.uid), { "coachNotice.active": false });
-            // Actualizamos localmente para que no salte si no recargamos
             if(userData.coachNotice) userData.coachNotice.active = false;
         } catch(e) { console.error("Error dismiss individual", e); }
     }
@@ -1459,8 +1438,10 @@ window.viewWorkoutDetails = (routineName, detailsStr, noteStr) => {
                     const r = s.r || 0;
                     const isDrop = s.isDrop ? '<span style="color:var(--warning-color);margin-left:2px">💧</span>' : '';
                     
-                    // FORMATO UNA LINEA: #1 12x50k
-                    html += `<div class="detail-set-badge">
+                    // --- AQUÍ ESTÁ EL CAMBIO VISUAL PARA DROPSETS ---
+                    const dropStyle = s.isDrop ? 'border: 1px solid var(--warning-color); background: rgba(255, 170, 0, 0.15);' : '';
+                    
+                    html += `<div class="detail-set-badge" style="${dropStyle}">
                                 <span class="detail-set-num">#${num}</span>
                                 <span><b>${r}</b> <span style="color:#666">x</span> ${w}k</span>
                                 ${isDrop}
