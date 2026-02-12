@@ -4,7 +4,7 @@ import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, q
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 import { EXERCISES } from './data.js';
 
-console.log("⚡ FIT DATA: App Iniciada (v8.0 - Final Alerts & Fixes)...");
+console.log("⚡ FIT DATA: App Iniciada (v8.0 - Stable Release)...");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDW40Lg6QvBc3zaaA58konqsH3QtDrRmyM",
@@ -69,68 +69,7 @@ let selectedRoutineForMassAssign = null;
 let selectedAnnouncementForAssign = null;
 let assignMode = 'plan'; 
 
-// --- MOTOR DE AUDIO ---
-const SILENT_MP3_URL = "https://raw.githubusercontent.com/anars/blank-audio/master/1-minute-of-silence.mp3";
-let htmlAudioElement = new Audio(SILENT_MP3_URL);
-htmlAudioElement.loop = true;
-htmlAudioElement.preload = 'auto';
-htmlAudioElement.volume = 1.0; 
-let lastBeepSecond = -1; 
-
-// Definición global para evitar ReferenceError
-window.initAudioEngine = function() {
-    if (!audioCtx) {
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        audioCtx = new AudioContext();
-    }
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-    htmlAudioElement.play().then(() => {
-        if ('mediaSession' in navigator) {
-            navigator.mediaSession.playbackState = "playing";
-            updateMediaSessionMetadata(totalRestTime || 60, 0);
-            navigator.mediaSession.setActionHandler('play', () => { htmlAudioElement.play(); navigator.mediaSession.playbackState = "playing"; });
-            navigator.mediaSession.setActionHandler('pause', () => { navigator.mediaSession.playbackState = "paused"; });
-            navigator.mediaSession.setActionHandler('previoustrack', () => window.addRestTime(-10));
-            navigator.mediaSession.setActionHandler('nexttrack', () => window.addRestTime(10));
-        }
-    }).catch(e => console.log("Esperando interacción..."));
-}
-
-function updateMediaSessionMetadata(duration, position) {
-    if ('mediaSession' in navigator) {
-        navigator.mediaSession.metadata = new MediaMetadata({
-            title: `Descanso: ${Math.ceil(duration - position)}s`,
-            artist: 'Fit Data Pro',
-            album: 'Recuperando...',
-            artwork: [{ src: 'logo.png', sizes: '512x512', type: 'image/png' }]
-        });
-        navigator.mediaSession.setPositionState({ duration: duration, playbackRate: 1, position: position });
-    }
-}
-
-window.playTickSound = function(isFinal = false) {
-    if(!audioCtx) return;
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.frequency.value = isFinal ? 600 : 1000; 
-    osc.type = isFinal ? 'square' : 'sine';
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    const now = audioCtx.currentTime;
-    osc.start(now);
-    const duration = isFinal ? 0.8 : 0.1;
-    gain.gain.setValueAtTime(0.5, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
-    osc.stop(now + duration);
-    if("vibrate" in navigator) navigator.vibrate(isFinal ? [500] : [50]);
-}
-
-document.body.addEventListener('touchstart', window.initAudioEngine, {once:true});
-document.body.addEventListener('click', window.initAudioEngine, {once:true});
-window.testSound = () => { window.playTickSound(false); setTimeout(() => window.playTickSound(true), 500); };
-
-
-// --- INYECCIÓN UI ---
+// --- INYECCIÓN DE ESTILOS Y MODALES ---
 function injectAppUI() {
     const style = document.createElement('style');
     style.textContent = `
@@ -182,7 +121,7 @@ function injectAppUI() {
             color: white; padding: 10px; margin-bottom: 10px; border-radius: 6px; box-sizing: border-box;
         }
 
-        /* Botón Telegram en Perfil */
+        /* Botón Telegram */
         .telegram-btn-profile {
             background: var(--accent-color); color: #000; border: none;
             padding: 10px 24px; border-radius: 50px; font-weight: bold;
@@ -192,22 +131,7 @@ function injectAppUI() {
         }
         .telegram-btn-profile:active { transform: scale(0.95); }
 
-        /* Librería Compacta */
-        .library-item-compact {
-            display: flex; justify-content: space-between; align-items: center;
-            background: #1a1a1a; padding: 10px 12px; margin-bottom: 8px;
-            border-radius: 8px; border-left: 3px solid var(--accent-color);
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-        }
-        .library-info { flex: 1; padding-right: 10px; overflow: hidden; }
-        .library-title { font-weight: bold; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: white; }
-        .library-sub { font-size: 0.7rem; color: #888; }
-        .library-actions { display: flex; gap: 4px; flex-shrink: 0; }
-        .btn-icon-lib { background: #222; border: 1px solid #444; color: #ccc; width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1rem; padding: 0; }
-        .btn-icon-lib.primary { border-color: var(--accent-color); color: var(--accent-color); }
-        .btn-icon-lib.danger { border-color: #f55; color: #f55; }
-        
-        /* Botones de Alerta Admin */
+        /* Botones Alerta Admin */
         .btn-alert-global {
             width: 100%; background: #ffaa00; color: #000; font-weight: bold;
             padding: 12px; margin-bottom: 15px; border-radius: 8px; border: none;
@@ -221,7 +145,7 @@ function injectAppUI() {
     `;
     document.head.appendChild(style);
 
-    // Inyectar HTML Modal Avisos (Cliente)
+    // Modal Avisos (Cliente)
     if (!document.getElementById('modal-announcement')) {
         const modalHTML = `
             <div id="modal-announcement" class="announcement-modal">
@@ -237,7 +161,7 @@ function injectAppUI() {
         document.body.insertAdjacentHTML('beforeend', modalHTML);
     }
 
-    // Inyectar HTML Modal Creador (Admin)
+    // Modal Creador (Admin)
     if (!document.getElementById('modal-alert-creator')) {
         const creatorHTML = `
             <div id="modal-alert-creator" class="alert-creator-modal">
@@ -292,7 +216,7 @@ function injectTelegramAndFields() {
 document.addEventListener('DOMContentLoaded', injectAppUI);
 setTimeout(injectAppUI, 1000); 
 
-// --- DEFINICIONES DE FUNCIONES CLAVE ---
+// --- FUNCIONES GLOBALES ---
 window.openAlertModal = (uid = null) => {
     alertTargetUid = uid;
     const label = document.getElementById('alert-target-label');
@@ -447,6 +371,66 @@ window.saveConfig = async () => {
     userData.telegram = tg;
     alert("Ajustes Guardados"); 
 };
+
+// --- MOTOR DE AUDIO ---
+const SILENT_MP3_URL = "https://raw.githubusercontent.com/anars/blank-audio/master/1-minute-of-silence.mp3";
+let htmlAudioElement = new Audio(SILENT_MP3_URL);
+htmlAudioElement.loop = true;
+htmlAudioElement.preload = 'auto';
+htmlAudioElement.volume = 1.0; 
+let lastBeepSecond = -1; 
+
+window.initAudioEngine = function() {
+    if (!audioCtx) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContext();
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    htmlAudioElement.play().then(() => {
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = "playing";
+            updateMediaSessionMetadata(totalRestTime || 60, 0);
+            navigator.mediaSession.setActionHandler('play', () => { htmlAudioElement.play(); navigator.mediaSession.playbackState = "playing"; });
+            navigator.mediaSession.setActionHandler('pause', () => { navigator.mediaSession.playbackState = "paused"; });
+            navigator.mediaSession.setActionHandler('previoustrack', () => window.addRestTime(-10));
+            navigator.mediaSession.setActionHandler('nexttrack', () => window.addRestTime(10));
+        }
+    }).catch(e => console.log("Esperando interacción..."));
+}
+
+function updateMediaSessionMetadata(duration, position) {
+    if ('mediaSession' in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+            title: `Descanso: ${Math.ceil(duration - position)}s`,
+            artist: 'Fit Data Pro',
+            album: 'Recuperando...',
+            artwork: [{ src: 'logo.png', sizes: '512x512', type: 'image/png' }]
+        });
+        navigator.mediaSession.setPositionState({ duration: duration, playbackRate: 1, position: position });
+    }
+}
+
+window.playTickSound = function(isFinal = false) {
+    if(!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.frequency.value = isFinal ? 600 : 1000; 
+    osc.type = isFinal ? 'square' : 'sine';
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    const now = audioCtx.currentTime;
+    osc.start(now);
+    const duration = isFinal ? 0.8 : 0.1;
+    gain.gain.setValueAtTime(0.5, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+    osc.stop(now + duration);
+    if("vibrate" in navigator) navigator.vibrate(isFinal ? [500] : [50]);
+}
+
+document.body.addEventListener('touchstart', window.initAudioEngine, {once:true});
+document.body.addEventListener('click', window.initAudioEngine, {once:true});
+window.testSound = () => { window.playTickSound(false); setTimeout(() => window.playTickSound(true), 500); };
+
 
 // --- UTILIDADES ---
 function getWeekNumber(d) {
