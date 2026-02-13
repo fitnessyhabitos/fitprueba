@@ -4,7 +4,7 @@ import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, q
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 import { EXERCISES } from './data.js';
 
-console.log("⚡ FIT DATA: App Iniciada (v7.7 - Smooth Audio)...");
+console.log("⚡ FIT DATA: App Iniciada (v7.9 - Profile Tabs Fixed)...");
 
 const firebaseConfig = {
   apiKey: "AIzaSyDW40Lg6QvBc3zaaA58konqsH3QtDrRmyM",
@@ -169,7 +169,7 @@ window.toggleElement = (id) => {
     if(el) el.classList.toggle('hidden');
 };
 
-// --- AUDIO ENGINE (OPTIMIZADO SPOTIFY + ALARMA SUAVE) ---
+// --- AUDIO ENGINE (OPTIMIZADO SPOTIFY + ALARMA INTERMEDIA) ---
 let lastBeepSecond = -1; 
 
 function initAudioEngine() {
@@ -210,12 +210,11 @@ function playTickSound(isFinal = false) {
     osc.stop(now + 0.1);
 }
 
-// Nueva alarma final: Acorde armónico "DING" (Menos agresivo)
+// Nueva alarma final: Onda Triangular (Punto medio entre Square y Sine)
 function playFinalAlarm() {
     if(!audioCtx) return;
     const now = audioCtx.currentTime;
 
-    // Dos osciladores para crear armonía (Ondas Sine = Suaves)
     const osc1 = audioCtx.createOscillator();
     const osc2 = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
@@ -224,24 +223,26 @@ function playFinalAlarm() {
     osc2.connect(gain);
     gain.connect(audioCtx.destination);
 
-    osc1.type = 'sine';
-    osc2.type = 'sine';
+    // TRIANGLE: Más cuerpo que Sine, menos agresivo que Square
+    osc1.type = 'triangle';
+    osc2.type = 'triangle';
 
-    // Acorde Mayor Brillante (C6 + E6)
-    osc1.frequency.setValueAtTime(1046.50, now); // Nota Do alta
-    osc2.frequency.setValueAtTime(1318.51, now); // Nota Mi alta
+    // Octavas limpias (La 880Hz + La 1760Hz)
+    osc1.frequency.setValueAtTime(880, now); 
+    osc2.frequency.setValueAtTime(1760, now); 
 
-    // Envolvente de sonido tipo campana (Attack rápido, Decay largo)
+    // Envolvente con más "Sustain" para que se oiga bien
     gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(0.8, now + 0.05); // Subida rápida
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 1.2); // Desvanecimiento lento
+    gain.gain.linearRampToValueAtTime(1.0, now + 0.05); // Attack rápido
+    gain.gain.setValueAtTime(1.0, now + 0.6); // Sustain fuerte medio segundo
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 1.0); // Release rápido
 
     osc1.start(now);
     osc2.start(now);
-    osc1.stop(now + 1.2);
-    osc2.stop(now + 1.2);
+    osc1.stop(now + 1.0);
+    osc2.stop(now + 1.0);
 
-    if("vibrate" in navigator) navigator.vibrate([200, 100, 400]);
+    if("vibrate" in navigator) navigator.vibrate([300, 100, 300]);
 }
 
 document.body.addEventListener('touchstart', initAudioEngine, {once:true});
@@ -258,6 +259,29 @@ window.enableNotifications = () => {
             alert("✅ Vinculado.");
         } else alert("❌ Permiso denegado.");
     });
+};
+
+// --- FUNCIÓN QUE FALTABA (FIX TABS PERFIL) ---
+window.switchProfileSubTab = (tabName) => {
+    // 1. Quitar clase active de todos los botones
+    document.querySelectorAll('.p-tab-btn').forEach(btn => btn.classList.remove('active'));
+    
+    // 2. Ocultar todos los contenidos
+    const cProgress = document.getElementById('tab-content-progress');
+    const cHistory = document.getElementById('tab-content-history');
+    const cSettings = document.getElementById('tab-content-settings');
+    
+    if(cProgress) cProgress.classList.add('hidden');
+    if(cHistory) cHistory.classList.add('hidden');
+    if(cSettings) cSettings.classList.add('hidden');
+    
+    // 3. Activar el botón seleccionado
+    const btn = document.getElementById(`ptab-btn-${tabName}`);
+    if(btn) btn.classList.add('active');
+    
+    // 4. Mostrar el contenido seleccionado
+    const content = document.getElementById(`tab-content-${tabName}`);
+    if(content) content.classList.remove('hidden');
 };
 
 // --- GESTIÓN DE AVISOS (COACH - SUBIDA DE IMAGEN + TEXTO) ---
@@ -1157,6 +1181,29 @@ window.promptRPE = () => {
 function showToast(msg) { const container = document.getElementById('toast-container') || createToastContainer(); const t = document.createElement('div'); t.className = 'toast-msg'; t.innerText = msg; container.appendChild(t); setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 500); }, 4000); }
 function createToastContainer() { const div = document.createElement('div'); div.id = 'toast-container'; document.body.appendChild(div); return div; }
 
+// --- FUNCIÓN QUE FALTABA (FIX TABS PERFIL) ---
+window.switchProfileSubTab = (tabName) => {
+    // 1. Quitar clase active de todos los botones
+    document.querySelectorAll('.p-tab-btn').forEach(btn => btn.classList.remove('active'));
+    
+    // 2. Ocultar todos los contenidos
+    const cProgress = document.getElementById('tab-content-progress');
+    const cHistory = document.getElementById('tab-content-history');
+    const cSettings = document.getElementById('tab-content-settings');
+    
+    if(cProgress) cProgress.classList.add('hidden');
+    if(cHistory) cHistory.classList.add('hidden');
+    if(cSettings) cSettings.classList.add('hidden');
+    
+    // 3. Activar el botón seleccionado
+    const btn = document.getElementById(`ptab-btn-${tabName}`);
+    if(btn) btn.classList.add('active');
+    
+    // 4. Mostrar el contenido seleccionado
+    const content = document.getElementById(`tab-content-${tabName}`);
+    if(content) content.classList.remove('hidden');
+};
+
 // --- GUARDADO INTELIGENTE (RANKING SEMANAL AGREGADO) ---
 window.finishWorkout = async (rpeVal) => {
     try {
@@ -1557,23 +1604,6 @@ window.exportWorkoutHistory = async () => {
 
     } catch (e) { console.error("Error CSV:", e); alert("Error al generar CSV."); } 
     finally { btn.disabled = false; btn.innerHTML = originalContent; btn.style.opacity = "1"; }
-};
-
-// --- FUNCIÓN DE CONTROL DE PESTAÑAS DE PERFIL ---
-window.switchProfileSubTab = (tabName) => {
-    // 1. Quitar clase active de todos los botones
-    document.querySelectorAll('.p-tab-btn').forEach(btn => btn.classList.remove('active'));
-    
-    // 2. Ocultar todos los contenidos
-    document.getElementById('tab-content-progress').classList.add('hidden');
-    document.getElementById('tab-content-history').classList.add('hidden');
-    document.getElementById('tab-content-settings').classList.add('hidden');
-    
-    // 3. Activar el botón seleccionado
-    document.getElementById(`ptab-btn-${tabName}`).classList.add('active');
-    
-    // 4. Mostrar el contenido seleccionado
-    document.getElementById(`tab-content-${tabName}`).classList.remove('hidden');
 };
 
 document.getElementById('btn-register').onclick=async()=>{
