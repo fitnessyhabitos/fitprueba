@@ -963,15 +963,12 @@ function renderMuscleRadar(canvasId, stats) {
     });
 }
 window.loadProfile = async () => {
-    // 1. Datos Básicos
     document.getElementById('profile-name').innerText = userData.name;
-    const img=document.getElementById('avatar-img'), txt=document.getElementById('avatar-text');
-    if(userData.photo) { txt.style.display='none'; img.src=userData.photo; img.style.display='block'; } else { img.style.display='none'; txt.style.display='block'; }
-    window.updatePhotoDisplay(userData);
+    if(userData.photo) { document.getElementById('avatar-text').style.display='none'; document.getElementById('avatar-img').src = userData.photo; document.getElementById('avatar-img').style.display='block'; }
+    updatePhotoDisplay(userData);
     
-    // 2. Configuración y Avisos
+    // --- PHOTO REMINDER AVISO ---
     if(!userData.photo) {
-        // Lógica del aviso de foto faltante (simplificada para legibilidad)
         const header = document.querySelector('.profile-header');
         if(!document.getElementById('photo-nudge')) {
              const nudge = document.createElement('div');
@@ -986,66 +983,58 @@ window.loadProfile = async () => {
         if(nudge) nudge.remove();
     }
 
-    document.getElementById('cfg-ranking').checked = userData.rankingOptIn;
-    document.getElementById('top-btn-ranking').classList.toggle('hidden', !userData.rankingOptIn);
-    document.getElementById('cfg-rest-time').value = userData.restTime || 60;
-    if(userData.telegram) document.getElementById('cfg-telegram').value = userData.telegram;
+    if(userData.rankingOptIn) { document.getElementById('cfg-ranking').checked = true; document.getElementById('top-btn-ranking').classList.remove('hidden'); } 
+    else { document.getElementById('cfg-ranking').checked = false; document.getElementById('top-btn-ranking').classList.add('hidden'); }
 
-    // 3. Toggles de Secciones (VISIBILIDAD)
-    const toggleSec = (id, show) => document.getElementById(id)?.classList.toggle('hidden', !show);
+    if(userData.showBio) { document.getElementById('user-bio-section').classList.remove('hidden'); if(userData.bioHistory && userData.bioHistory.length > 0) renderBioChart('chartBio', userData.bioHistory); } else { document.getElementById('user-bio-section').classList.add('hidden'); }
+    if(userData.dietFile) document.getElementById('btn-diet-view').classList.remove('hidden'); else document.getElementById('btn-diet-view').classList.add('hidden');
+    if(userData.showSkinfolds) {
+        document.getElementById('user-skinfolds-section').classList.remove('hidden');
+        if(userData.skinfoldHistory && userData.skinfoldHistory.length > 0) {
+            const ctxF = document.getElementById('chartFat');
+            if(fatChartInstance) fatChartInstance.destroy();
+            const dataF = userData.skinfoldHistory.map(f => f.fat || 0);
+            const labels = userData.skinfoldHistory.map(f => new Date(f.date.seconds*1000).toLocaleDateString());
+            fatChartInstance = new Chart(ctxF, { type: 'line', data: { labels: labels, datasets: [{ label: '% Grasa', data: dataF, borderColor: '#ffaa00', tension: 3 }] }, options: { plugins: { legend: { display: false } }, scales: { y: { grid: { color: '#333' } }, x: { display: false } }, maintainAspectRatio: false } });
+        }
+    } else { document.getElementById('user-skinfolds-section').classList.add('hidden'); }
+    if(userData.showMeasurements) {
+        document.getElementById('user-measures-section').classList.remove('hidden');
+        if(userData.measureHistory && userData.measureHistory.length > 0) renderMeasureChart('chartMeasures', userData.measureHistory);
+    } else { document.getElementById('user-measures-section').classList.add('hidden'); }
+    if(userData.restTime) document.getElementById('cfg-rest-time').value = userData.restTime;
     
-    toggleSec('user-bio-section', userData.showBio);
-    toggleSec('user-skinfolds-section', userData.showSkinfolds);
-    toggleSec('user-measures-section', userData.showMeasurements);
-    
-    // --- NUEVO: Control de visibilidad de Fotos ---
-    toggleSec('user-photos-section', userData.showPhotos); 
-    // ---------------------------------------------
+    if(userData.telegram) {
+        const tInput = document.getElementById('cfg-telegram');
+        if(tInput) tInput.value = userData.telegram;
+    }
 
-    toggleSec('btn-diet-view', userData.dietFile);
-
-    // 4. Estadísticas
     document.getElementById('stat-workouts').innerText = userData.stats.workouts || 0;
     document.getElementById('stat-kg').innerText = userData.stats.totalKg ? (userData.stats.totalKg/1000).toFixed(1)+'t' : 0;
     document.getElementById('stat-sets').innerText = userData.stats.totalSets || 0;
     document.getElementById('stat-reps').innerText = userData.stats.totalReps || 0;
-
-    // 5. Gráficos
-    renderLineChart('weightChart', (userData.weightHistory||[70]).map((_,i)=>`T${i}`), [{label:'Kg', data:userData.weightHistory||[70], borderColor:'#ff3333', backgroundColor:'rgba(255,51,51,0.1)', fill:true}]);
+    const ctx = document.getElementById('weightChart'); 
+    if(chartInstance) chartInstance.destroy();
+    const rawData = userData.weightHistory;
+    const data = (rawData && rawData.length > 0) ? rawData : [70]; 
+    chartInstance = new Chart(ctx, { type:'line', data:{ labels:data.map((_,i)=>`T${i}`), datasets:[{label:'Kg', data:data, borderColor:'#ff3333', backgroundColor:'rgba(255,51,51,0.1)', fill:true, tension:0.4}] }, options:{plugins:{legend:{display:false}}, scales:{x:{display:false},y:{grid:{color:'#333'}}}, maintainAspectRatio:false} });
+    const histDiv = document.getElementById('user-history-list'); histDiv.innerHTML = "Cargando...";
+    try {
+        const q = query(collection(db, "workouts"), where("uid", "==", currentUser.uid));
+        const snap = await getDocs(q);
+        const workouts = snap.docs.map(d => ({id:d.id, ...d.data()})).sort((a,b) => b.date - a.date).slice(0, 5);
+        histDiv.innerHTML = workouts.length ? '' : "Sin historial.";
+        workouts.forEach(d => {
+            const date = d.date ? new Date(d.date.seconds*1000).toLocaleDateString() : '-';
+            const detailsStr = d.details ? encodeURIComponent(JSON.stringify(d.details)) : "";
+            const noteStr = d.note ? encodeURIComponent(d.note) : "";
+            const btnVer = d.details ? `<button class="btn-small btn-outline" style="margin:0; padding:2px 6px;" onclick="window.viewWorkoutDetails('${d.routine}', '${detailsStr}', '${noteStr}')">🔍</button>` : '';
+            histDiv.innerHTML += `<div class="history-row" style="grid-template-columns: 1fr 40px;"><div><span style="color:#accent-color">${date}</span> - ${d.routine}</div><div style="text-align:right;">${btnVer}</div></div>`;
+        });
+    } catch(e) { histDiv.innerHTML = "Error."; }
+    
     renderMuscleRadar('userMuscleChart', userData.muscleStats || {});
-
-    // Gráficos condicionales (Bio, Pliegues, Medidas...)
-    if(userData.showBio && userData.bioHistory?.length) {
-        const labels = userData.bioHistory.map(h => new Date(h.date.seconds*1000).toLocaleDateString());
-        renderLineChart('chartBio', labels, [
-            {label:'% Músculo', data:userData.bioHistory.map(h=>h.muscle), borderColor:'#00ffff'},
-            {label:'% Grasa', data:userData.bioHistory.map(h=>h.fat), borderColor:'#ffaa00'}
-        ]);
-    }
-    
-    if(userData.showSkinfolds && userData.skinfoldHistory?.length) {
-        const labels = userData.skinfoldHistory.map(h => new Date(h.date.seconds*1000).toLocaleDateString());
-        renderLineChart('chartFat', labels, [{label:'% Grasa', data:userData.skinfoldHistory.map(h=>h.fat), borderColor:'#ffaa00'}]);
-    }
-
-    if(userData.showMeasurements && userData.measureHistory?.length) {
-        const d = userData.measureHistory;
-        const ls = d.map(h => new Date(h.date.seconds*1000).toLocaleDateString());
-        renderLineChart('chartMeasures', ls, [{l:'Pecho',c:'#FF5733',k:'chest'},{l:'Cintura',c:'#00FF88',k:'waist'},{l:'Brazo',c:'#FF33A8',k:'arm'},{l:'Muslo',c:'#F3FF33',k:'thigh'}].map(p=>({label:p.l, borderColor:p.c, data:d.map(x=>x[p.k]||0)})));
-    }
-    
-    // 6. Historial
-    const histDiv = document.getElementById('user-history-list'); 
-    histDiv.innerHTML = "Cargando...";
-    const snap = await getDocs(query(collection(db, "workouts"), where("uid", "==", currentUser.uid), limit(10))); 
-    const workouts = snap.docs.map(d => ({id:d.id, ...d.data()})).sort((a,b) => b.date - a.date);
-    histDiv.innerHTML = workouts.length ? '' : "Sin historial.";
-    workouts.forEach(d => {
-        const date = d.date ? new Date(d.date.seconds*1000).toLocaleDateString() : '-';
-        const btn = `<button class="btn-small btn-outline" style="margin:0; padding:2px 6px;" onclick="window.viewWorkoutDetails('${d.routine}', '${encodeURIComponent(JSON.stringify(d.details))}', '${encodeURIComponent(d.note||"")}')">🔍</button>`;
-        histDiv.innerHTML += `<div class="history-row" style="grid-template-columns: 1fr 40px;"><div><span style="color:var(--accent-color)">${date}</span> - ${d.routine}</div><div style="text-align:right;">${btn}</div></div>`;
-    });
-};
+}
 
 window.openDietView = () => { if(!userData.dietFile) return; const url = `nutricion/${userData.dietFile}`; document.getElementById('diet-frame').src = url; window.openModal('modal-diet'); };
 window.closeDiet = () => { document.getElementById('diet-frame').src = "about:blank"; window.closeModal('modal-diet'); };
@@ -1614,17 +1603,6 @@ window.openCoachView = async (uid, u) => {
     else { document.getElementById('coach-user-img').style.display = 'none'; document.getElementById('coach-user-initial').style.display = 'block'; document.getElementById('coach-user-initial').innerText = freshU.name.charAt(0).toUpperCase(); }
     document.getElementById('pending-approval-banner').classList.toggle('hidden', freshU.approved);
     updateCoachPhotoDisplay('front');
-  // ... (inicio de la función openCoachView) ...
-    
-    window.updateCoachPhotoDisplay('front');
-    
-    // Toggles: Añadido 'Photos' al array para activar el switch correspondiente
-    ['Bio','Skinfolds','Measures','Videos', 'Photos'].forEach(k => {
-        const el = document.getElementById(`coach-toggle-${k.toLowerCase()}`);
-        if(el) el.checked = !!u[`show${k}`];
-    });
-
-    // ... (resto de la función openCoachView) ...
     document.getElementById('coach-toggle-bio').checked = !!freshU.showBio; document.getElementById('coach-toggle-skinfolds').checked = !!freshU.showSkinfolds; document.getElementById('coach-toggle-measures').checked = !!freshU.showMeasurements; document.getElementById('coach-toggle-videos').checked = !!freshU.showVideos;
     const dietSel = document.getElementById('coach-diet-select'); dietSel.innerHTML = '<option value="">-- Sin Dieta --</option>';
     AVAILABLE_DIETS.forEach(d => { const opt = new Option(d.name, d.file); if(freshU.dietFile === d.file) opt.selected = true; dietSel.appendChild(opt); });
