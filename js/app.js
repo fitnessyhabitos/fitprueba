@@ -1620,7 +1620,7 @@ window.openCoachView = async (uid, u) => {
     
     renderMuscleRadar('coachMuscleChart', freshU.muscleStats || {});
 
-    const st = freshU.stats || {}; document.getElementById('coach-stats-text').innerHTML = `<div class="stat-pill"><b>${st.workouts||0}</b><span>ENTRENOS</span></div><div class="stat-pill"><b>${(st.totalKg/1000||0).toFixed(1)}t</b><span>CARGA</span></div><div class="stat-pill"><b>${freshU.age||'N/D'}</b><span>AÑOS</span></div>`;
+    const st = freshU.stats || {}; document.getElementById('coach-stats-text').innerHTML = `<div class="stat-pill"><b>${st.workouts||0}</b><span>ENTRENOS</span></div><div class="stat-pill"><b>${(st.totalKg/1000||0).toFixed(1)}t</b><span>CARGA</span></div><div class="stat-pill"><b>${st.totalReps||0}</b><span>REPS</span></div>`;
     if(coachChart) coachChart.destroy(); const wData = freshU.weightHistory || [70]; coachChart = new Chart(document.getElementById('coachWeightChart'), { type:'line', data: { labels:wData.map((_,i)=>i+1), datasets:[{label:'Kg', data:wData, borderColor:'#ff3333'}] }, options:{ maintainAspectRatio: false}});
     const hList = document.getElementById('coach-history-list'); hList.innerHTML = 'Cargando...';
     const wSnap = await getDocs(query(collection(db,"workouts"), where("uid","==",uid))); hList.innerHTML = wSnap.empty ? 'Sin datos.' : '';
