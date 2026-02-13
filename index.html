@@ -108,7 +108,7 @@
             <button class="btn-outline" style="border-color:#666;" onclick="window.switchTab('routines-view')">CANCELAR</button>
         </section>
 
-        <section id="profile-view" class="view-container">
+       <section id="profile-view" class="view-container">
             <div class="profile-header">
                 <div class="avatar-circle" onclick="document.getElementById('file-avatar').click()">
                     <img id="avatar-img" src="" style="display:none;">
@@ -129,173 +129,187 @@
                 <button class="btn-outline btn-small" style="width:auto; margin:0;" onclick="window.loadProfile()">↻</button>
             </div>
 
-            <div class="card">
-                <h3>HISTORIAL RECIENTE</h3>
-                <div id="user-history-list" style="font-size:0.8rem; color:#888;">Cargando...</div>
-                <button class="btn-outline" style="border-color:var(--success-color); color:var(--success-color); margin-top:15px;" onclick="window.openProgress()">📈 EVOLUCIÓN DETALLADA</button>
+            <div class="profile-sub-tabs">
+                <div id="ptab-btn-progress" class="p-tab-btn active" onclick="window.switchProfileSubTab('progress')">PROGRESO</div>
+                <div id="ptab-btn-history" class="p-tab-btn" onclick="window.switchProfileSubTab('history')">HISTORIAL</div>
+                <div id="ptab-btn-settings" class="p-tab-btn" onclick="window.switchProfileSubTab('settings')">AJUSTES</div>
             </div>
 
-            <div class="card">
-                <h3>ESTADÍSTICAS TOTALES</h3>
-                <div class="stats-grid">
-                    <div class="stat-box"><span class="stat-num" id="stat-workouts">0</span><span class="stat-label">Entrenos</span></div>
-                    <div class="stat-box"><span class="stat-num" id="stat-kg">0</span><span class="stat-label">Kg Movidos</span></div>
-                    <div class="stat-box"><span class="stat-num" id="stat-sets">0</span><span class="stat-label">Series</span></div>
-                    <div class="stat-box"><span class="stat-num" id="stat-reps">0</span><span class="stat-label">Reps</span></div>
-                </div>
-            </div>
-
-            <div class="card">
-                <h3>MAPA DE SIMETRÍA</h3>
-                <div style="height:300px; width:100%; position:relative;">
-                    <canvas id="userMuscleChart"></canvas>
-                </div>
-            </div>
-
-            <div class="card">
-                <h3>EVOLUCIÓN FÍSICA</h3>
-                <div class="tip-box">💡 TIP: Usa siempre la misma luz, ropa y lugar.</div>
-                <div class="photo-tabs">
-                    <div class="photo-tab active" id="tab-front" onclick="window.switchPose('front')">👤 FRONTAL</div>
-                    <div class="photo-tab" id="tab-back" onclick="window.switchPose('back')">🛡️ ESPALDA</div>
-                </div>
-                <div class="compare-wrapper">
-                    <div class="slider-labels"><span class="label-tag">ANTES</span><span class="label-tag">AHORA</span></div>
-                    <img src="" id="img-before" class="compare-img">
-                    <img src="" id="img-overlay" class="compare-img img-overlay">
-                    <div class="slider-handle" id="slider-handle"><div class="slider-btn"></div></div>
-                </div>
-                <input type="range" min="0" max="100" value="0" style="width:100%; margin-top:15px;" oninput="window.moveSlider(this.value)">
-                <div class="photo-actions">
-                    <button class="btn-outline" style="margin:0;" onclick="document.getElementById('f-before').click()">1. ANTES</button>
-                    <button class="btn-danger btn-small" style="margin:0;" onclick="window.deletePhoto('before')">🗑️</button>
-                    <button class="btn-outline" style="margin:0;" onclick="document.getElementById('f-after').click()">2. AHORA</button>
-                    <button class="btn-danger btn-small" style="margin:0;" onclick="window.deletePhoto('after')">🗑️</button>
-                </div>
-                <input type="file" id="f-before" class="hidden" accept="image/*" onchange="window.loadCompImg(this,'before')">
-                <input type="file" id="f-after" class="hidden" accept="image/*" onchange="window.loadCompImg(this,'after')">
-                <div style="display:flex; justify-content:space-between; margin-top:5px; font-size:0.6rem; color:#888;">
-                    <span id="date-before">-</span><span id="date-after">-</span>
-                </div>
-            </div>
-
-            <div class="card">
-                <h3>PESO CORPORAL</h3>
-                <div style="height:200px; position:relative; margin-bottom:10px;"><canvas id="weightChart"></canvas></div>
-                <button class="btn-outline" onclick="window.addWeightEntry()">+ REGISTRAR PESO</button>
-            </div>
-
-            <div id="user-bio-section" class="card hidden">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                    <h3 style="margin:0;">⚡ BIOIMPEDANCIA</h3>
-                </div>
-                <div style="height:200px; width:100%; position:relative; margin-bottom:15px;">
-                    <canvas id="chartBio"></canvas>
-                </div>
-                <div class="measure-grid">
-                    <div>
-                        <label style="font-size:0.7rem; color:#aaa;">% Musculatura</label>
-                        <input type="number" id="bio-muscle" placeholder="% Músculo" style="color:var(--success-color); font-weight:bold;">
-                    </div>
-                    <div>
-                        <label style="font-size:0.7rem; color:#aaa;">% Grasa</label>
-                        <input type="number" id="bio-fat" placeholder="% Grasa" style="color:var(--warning-color); font-weight:bold;">
-                    </div>
-                </div>
-                <button class="btn-small btn-outline" onclick="window.saveBioEntry()">GUARDAR DATOS</button>
-            </div>
-
-            <div id="user-skinfolds-section" class="card hidden">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                    <h3 style="margin:0;">🤏 PLIEGUES (% GRASA)</h3>
-                    <button class="btn-small btn-outline" style="width:auto; padding:2px 8px; margin:0;" onclick="window.toggleElement('img-pliegues')">ℹ️ Guía</button>
-                </div>
-                <img id="img-pliegues" src="pliegues.png" class="hidden" style="width:100%; border-radius:8px; margin-bottom:15px; border:1px solid #333;">
+            <div id="tab-content-progress" class="profile-tab-content">
                 
-                <div style="height:200px; width:100%; position:relative; margin-bottom:15px;">
-                    <canvas id="chartFat"></canvas>
-                </div>
-                <div class="tip-box" style="margin-bottom:10px;">Introduce los milímetros (mm)</div>
-                <div class="measure-grid">
-                    <input type="number" id="p-chest" placeholder="Pecho">
-                    <input type="number" id="p-axilla" placeholder="Axilar">
-                    <input type="number" id="p-tricep" placeholder="Tríceps">
-                    <input type="number" id="p-subscap" placeholder="Subescapular">
-                    <input type="number" id="p-abdo" placeholder="Abdomen">
-                    <input type="number" id="p-supra" placeholder="Suprailiaco">
-                    <input type="number" id="p-thigh" placeholder="Muslo">
-                </div>
-                <button class="btn-small btn-outline" onclick="window.calculateAndSaveSkinfolds()">CALCULAR Y GUARDAR</button>
-            </div>
-
-            <div id="user-measures-section" class="card hidden">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                    <h3 style="margin:0;">📏 MEDIDAS (cm)</h3>
-                    <button class="btn-small btn-outline" style="width:auto; padding:2px 8px; margin:0;" onclick="window.toggleElement('img-medidas')">ℹ️ Guía</button>
-                </div>
-                <img id="img-medidas" src="medidas.png" class="hidden" style="width:100%; border-radius:8px; margin-bottom:15px; border:1px solid #333;">
-
-                <div style="height:250px; width:100%; position:relative; margin-bottom:15px;">
-                    <canvas id="chartMeasures"></canvas>
-                </div>
-                <div class="measure-grid">
-                    <input type="number" id="m-chest" placeholder="Pecho">
-                    <input type="number" id="m-waist" placeholder="Cintura">
-                    <input type="number" id="m-hip" placeholder="Cadera">
-                    <input type="number" id="m-arm" placeholder="Brazo">
-                    <input type="number" id="m-thigh" placeholder="Muslo">
-                    <input type="number" id="m-calf" placeholder="Gemelo">
-                    <input type="number" id="m-shoulder" placeholder="Hombros">
-                </div>
-                <button class="btn-small btn-outline" onclick="window.saveMeasurements()">GUARDAR MEDIDAS</button>
-            </div>
-
-            <div class="card">
-                <h3>CONFIGURACIÓN</h3>
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                      <span>Tiempo Descanso (s)</span>
-                      <input type="number" id="cfg-rest-time" style="width:80px; margin:0; text-align:center;" value="60">
-                </div>
-                
-                <div style="margin-bottom:15px; padding-top:10px; border-top:1px solid #333;">
-                    <button class="btn-small btn-outline" style="width:100%; border-color:#444;" onclick="window.enableNotifications()">⌚ VINCULAR NOTIFICACIONES</button>
-                    <p style="font-size:0.65rem; color:#666; text-align:center; margin-top:5px;">Para que vibre el reloj al acabar el descanso</p>
-                </div>
-
-                <div style="margin-bottom:15px;">
-                    <div style="font-size:0.8rem; color:#aaa; margin-bottom:5px;">Recordatorio Fotos:</div>
-                    <div style="display:flex; gap:10px;">
-                        <select id="photo-day" style="margin:0;">
-                            <option value="1">Lunes</option><option value="2">Martes</option><option value="3">Miércoles</option>
-                            <option value="4">Jueves</option><option value="5">Viernes</option><option value="6">Sábado</option><option value="0">Domingo</option>
-                        </select>
-                        <input type="time" id="photo-time" value="09:00" style="margin:0;">
-                        <button class="btn-small btn" onclick="window.savePhotoReminder()">OK</button>
+                <div class="card">
+                    <h3>ESTADÍSTICAS TOTALES</h3>
+                    <div class="stats-grid">
+                        <div class="stat-box"><span class="stat-num" id="stat-workouts">0</span><span class="stat-label">Entrenos</span></div>
+                        <div class="stat-box"><span class="stat-num" id="stat-kg">0</span><span class="stat-label">Kg Movidos</span></div>
+                        <div class="stat-box"><span class="stat-num" id="stat-sets">0</span><span class="stat-label">Series</span></div>
+                        <div class="stat-box"><span class="stat-num" id="stat-reps">0</span><span class="stat-label">Reps</span></div>
                     </div>
                 </div>
-                <div style="display:flex; justify-content:space-between; margin-bottom:10px; align-items:center;">
-                    <span>Sonido (5 Beeps)</span>
-                    <div style="display:flex; gap:10px; align-items:center;">
-                        <button class="btn-small btn-outline" style="margin:0; padding:2px 8px; font-size:0.7rem;" onclick="window.testSound()">🔊 PROBAR</button>
-                        <label class="switch"><input type="checkbox" id="cfg-sound" checked><span class="slider"></span></label>
+
+                <div class="card">
+                    <h3>MAPA DE SIMETRÍA</h3>
+                    <div style="height:300px; width:100%; position:relative;">
+                        <canvas id="userMuscleChart"></canvas>
                     </div>
                 </div>
-                <div style="display:flex; justify-content:space-between;">
-                    <span>Pantalla Activa</span><label class="switch"><input type="checkbox" id="cfg-wake" checked><span class="slider"></span></label>
-                </div>
 
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; border-top:1px solid #333; padding-top:10px;">
-                    <div>
-                        <span>🏆 Participar en Ranking</span><br>
-                        <small style="color:#666; font-size:0.65rem;">Tu nombre y Kg serán públicos</small>
+                <div class="card">
+                    <h3>EVOLUCIÓN FÍSICA</h3>
+                    <div class="tip-box">💡 TIP: Usa siempre la misma luz, ropa y lugar.</div>
+                    <div class="photo-tabs">
+                        <div class="photo-tab active" id="tab-front" onclick="window.switchPose('front')">👤 FRONTAL</div>
+                        <div class="photo-tab" id="tab-back" onclick="window.switchPose('back')">🛡️ ESPALDA</div>
                     </div>
-                    <label class="switch"><input type="checkbox" id="cfg-ranking" onchange="window.toggleRankingOptIn(this.checked)"><span class="slider"></span></label>
+                    <div class="compare-wrapper">
+                        <div class="slider-labels"><span class="label-tag">ANTES</span><span class="label-tag">AHORA</span></div>
+                        <img src="" id="img-before" class="compare-img">
+                        <img src="" id="img-overlay" class="compare-img img-overlay">
+                        <div class="slider-handle" id="slider-handle"><div class="slider-btn"></div></div>
+                    </div>
+                    <input type="range" min="0" max="100" value="0" style="width:100%; margin-top:15px;" oninput="window.moveSlider(this.value)">
+                    <div class="photo-actions">
+                        <button class="btn-outline" style="margin:0;" onclick="document.getElementById('f-before').click()">1. ANTES</button>
+                        <button class="btn-danger btn-small" style="margin:0;" onclick="window.deletePhoto('before')">🗑️</button>
+                        <button class="btn-outline" style="margin:0;" onclick="document.getElementById('f-after').click()">2. AHORA</button>
+                        <button class="btn-danger btn-small" style="margin:0;" onclick="window.deletePhoto('after')">🗑️</button>
+                    </div>
+                    <input type="file" id="f-before" class="hidden" accept="image/*" onchange="window.loadCompImg(this,'before')">
+                    <input type="file" id="f-after" class="hidden" accept="image/*" onchange="window.loadCompImg(this,'after')">
+                    <div style="display:flex; justify-content:space-between; margin-top:5px; font-size:0.6rem; color:#888;">
+                        <span id="date-before">-</span><span id="date-after">-</span>
+                    </div>
                 </div>
 
-                <button class="btn-outline" style="margin-top:15px;" onclick="window.saveConfig()">GUARDAR AJUSTES</button>
+                <div class="card">
+                    <h3>PESO CORPORAL</h3>
+                    <div style="height:200px; position:relative; margin-bottom:10px;"><canvas id="weightChart"></canvas></div>
+                    <button class="btn-outline" onclick="window.addWeightEntry()">+ REGISTRAR PESO</button>
+                </div>
+
+                <div id="user-bio-section" class="card hidden">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <h3 style="margin:0;">⚡ BIOIMPEDANCIA</h3>
+                    </div>
+                    <div style="height:200px; width:100%; position:relative; margin-bottom:15px;">
+                        <canvas id="chartBio"></canvas>
+                    </div>
+                    <div class="measure-grid">
+                        <div>
+                            <label style="font-size:0.7rem; color:#aaa;">% Musculatura</label>
+                            <input type="number" id="bio-muscle" placeholder="% Músculo" style="color:var(--success-color); font-weight:bold;">
+                        </div>
+                        <div>
+                            <label style="font-size:0.7rem; color:#aaa;">% Grasa</label>
+                            <input type="number" id="bio-fat" placeholder="% Grasa" style="color:var(--warning-color); font-weight:bold;">
+                        </div>
+                    </div>
+                    <button class="btn-small btn-outline" onclick="window.saveBioEntry()">GUARDAR DATOS</button>
+                </div>
+
+                <div id="user-skinfolds-section" class="card hidden">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <h3 style="margin:0;">🤏 PLIEGUES (% GRASA)</h3>
+                        <button class="btn-small btn-outline" style="width:auto; padding:2px 8px; margin:0;" onclick="window.toggleElement('img-pliegues')">ℹ️ Guía</button>
+                    </div>
+                    <img id="img-pliegues" src="pliegues.png" class="hidden" style="width:100%; border-radius:8px; margin-bottom:15px; border:1px solid #333;">
+                    
+                    <div style="height:200px; width:100%; position:relative; margin-bottom:15px;">
+                        <canvas id="chartFat"></canvas>
+                    </div>
+                    <div class="tip-box" style="margin-bottom:10px;">Introduce los milímetros (mm)</div>
+                    <div class="measure-grid">
+                        <input type="number" id="p-chest" placeholder="Pecho">
+                        <input type="number" id="p-axilla" placeholder="Axilar">
+                        <input type="number" id="p-tricep" placeholder="Tríceps">
+                        <input type="number" id="p-subscap" placeholder="Subescapular">
+                        <input type="number" id="p-abdo" placeholder="Abdomen">
+                        <input type="number" id="p-supra" placeholder="Suprailiaco">
+                        <input type="number" id="p-thigh" placeholder="Muslo">
+                    </div>
+                    <button class="btn-small btn-outline" onclick="window.calculateAndSaveSkinfolds()">CALCULAR Y GUARDAR</button>
+                </div>
+
+                <div id="user-measures-section" class="card hidden">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <h3 style="margin:0;">📏 MEDIDAS (cm)</h3>
+                        <button class="btn-small btn-outline" style="width:auto; padding:2px 8px; margin:0;" onclick="window.toggleElement('img-medidas')">ℹ️ Guía</button>
+                    </div>
+                    <img id="img-medidas" src="medidas.png" class="hidden" style="width:100%; border-radius:8px; margin-bottom:15px; border:1px solid #333;">
+
+                    <div style="height:250px; width:100%; position:relative; margin-bottom:15px;">
+                        <canvas id="chartMeasures"></canvas>
+                    </div>
+                    <div class="measure-grid">
+                        <input type="number" id="m-chest" placeholder="Pecho">
+                        <input type="number" id="m-waist" placeholder="Cintura">
+                        <input type="number" id="m-hip" placeholder="Cadera">
+                        <input type="number" id="m-arm" placeholder="Brazo">
+                        <input type="number" id="m-thigh" placeholder="Muslo">
+                        <input type="number" id="m-calf" placeholder="Gemelo">
+                        <input type="number" id="m-shoulder" placeholder="Hombros">
+                    </div>
+                    <button class="btn-small btn-outline" onclick="window.saveMeasurements()">GUARDAR MEDIDAS</button>
+                </div>
             </div>
 
-            <button class="btn-outline" style="border-color:#500; color:#f55; margin-bottom:20px;" onclick="window.logout()">CERRAR SESIÓN</button>
+            <div id="tab-content-history" class="profile-tab-content hidden">
+                <div class="card" style="min-height: 300px;">
+                    <h3>HISTORIAL DE ENTRENOS</h3>
+                    <div id="user-history-list" style="font-size:0.8rem; color:#888;">Cargando historial...</div>
+                    <button class="btn-outline" style="border-color:var(--success-color); color:var(--success-color); margin-top:20px;" onclick="window.openProgress()">📈 GRÁFICA DETALLADA</button>
+                </div>
+            </div>
+
+            <div id="tab-content-settings" class="profile-tab-content hidden">
+                <div class="card">
+                    <h3>CONFIGURACIÓN</h3>
+                    
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                          <span>Tiempo Descanso (s)</span>
+                          <input type="number" id="cfg-rest-time" style="width:80px; margin:0; text-align:center;" value="60">
+                    </div>
+                    
+                    <div style="margin-bottom:15px; padding-top:10px; border-top:1px solid #333;">
+                        <button class="btn-small btn-outline" style="width:100%; border-color:#444;" onclick="window.enableNotifications()">⌚ VINCULAR NOTIFICACIONES</button>
+                        <p style="font-size:0.65rem; color:#666; text-align:center; margin-top:5px;">Para que vibre el reloj al acabar el descanso</p>
+                    </div>
+
+                    <div style="margin-bottom:15px;">
+                        <div style="font-size:0.8rem; color:#aaa; margin-bottom:5px;">Recordatorio Fotos:</div>
+                        <div style="display:flex; gap:10px;">
+                            <select id="photo-day" style="margin:0;">
+                                <option value="1">Lunes</option><option value="2">Martes</option><option value="3">Miércoles</option>
+                                <option value="4">Jueves</option><option value="5">Viernes</option><option value="6">Sábado</option><option value="0">Domingo</option>
+                            </select>
+                            <input type="time" id="photo-time" value="09:00" style="margin:0;">
+                            <button class="btn-small btn" onclick="window.savePhotoReminder()">OK</button>
+                        </div>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; margin-bottom:10px; align-items:center;">
+                        <span>Sonido (Beeps)</span>
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <button class="btn-small btn-outline" style="margin:0; padding:2px 8px; font-size:0.7rem;" onclick="window.testSound()">🔊 PROBAR</button>
+                            <label class="switch"><input type="checkbox" id="cfg-sound" checked><span class="slider"></span></label>
+                        </div>
+                    </div>
+                    <div style="display:flex; justify-content:space-between;">
+                        <span>Pantalla Activa</span><label class="switch"><input type="checkbox" id="cfg-wake" checked><span class="slider"></span></label>
+                    </div>
+
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; border-top:1px solid #333; padding-top:10px;">
+                        <div>
+                            <span>🏆 Participar en Ranking</span><br>
+                            <small style="color:#666; font-size:0.65rem;">Tu nombre y Kg serán públicos</small>
+                        </div>
+                        <label class="switch"><input type="checkbox" id="cfg-ranking" onchange="window.toggleRankingOptIn(this.checked)"><span class="slider"></span></label>
+                    </div>
+
+                    <button class="btn-outline" style="margin-top:15px;" onclick="window.saveConfig()">GUARDAR AJUSTES</button>
+                </div>
+
+                <button class="btn-outline" style="border-color:#500; color:#f55; margin-bottom:20px;" onclick="window.logout()">CERRAR SESIÓN</button>
+            </div>
         </section>
 
         <section id="workout-view" class="view-container">
