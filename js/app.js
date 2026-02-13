@@ -502,7 +502,7 @@ onAuthStateChanged(auth, async (user) => {
                 const savedW = localStorage.getItem('fit_active_workout');
                 if(savedW) {
                     activeWorkout = JSON.parse(savedW);
-                    renderWorkout();
+                    Workout();
                     switchTab('workout-view');
                     startTimerMini();
                 } else { switchTab('routines-view'); }
@@ -884,7 +884,7 @@ function renderMuscleRadar(canvasId, stats) {
     const ctx = document.getElementById(canvasId);
     if(!ctx) return;
 
-    // 1. FIX CRÍTICO: Verificar si ya existe un gráfico en este canvas y destruirlo
+    // 1. Limpieza: Destruir gráfico previo si existe
     const existingChart = Chart.getChart(ctx);
     if (existingChart) {
         existingChart.destroy();
@@ -892,8 +892,6 @@ function renderMuscleRadar(canvasId, stats) {
 
     const muscleGroups = ["Pecho", "Espalda", "Cuádriceps", "Isquios", "Hombros", "Bíceps", "Tríceps", "Glúteos"];
     const dataValues = muscleGroups.map(m => stats[m] || 0);
-
-    // 2. FIX RangeError: Calculamos el máximo manual para evitar errores si todo es 0
     const maxValue = Math.max(...dataValues);
 
     new Chart(ctx, {
@@ -901,10 +899,14 @@ function renderMuscleRadar(canvasId, stats) {
         data: {
             labels: muscleGroups,
             datasets: [{
-                label: 'Volumen Relativo',
+                label: 'Volumen',
                 data: dataValues,
-                backgroundColor: 'rgba(255, 51, 51, 0.4)',
+                // Relleno rojo semitransparente (estilo "área de impacto")
+                backgroundColor: 'rgba(255, 51, 51, 0.25)', 
+                // Borde rojo neón sólido
                 borderColor: '#ff3333',
+                borderWidth: 2,
+                // Puntos de unión
                 pointBackgroundColor: '#ff3333',
                 pointBorderColor: '#fff',
                 pointHoverBackgroundColor: '#fff',
@@ -914,25 +916,40 @@ function renderMuscleRadar(canvasId, stats) {
         options: {
             scales: {
                 r: {
-                    angleLines: { color: '#333' },
-                    grid: { color: '#333' },
-                    pointLabels: { color: '#ccc', font: { size: 10 } },
+                    // CONFIGURACIÓN DE LA "TELA DE ARAÑA"
+                    angleLines: { 
+                        color: 'rgba(255, 255, 255, 0.15)' // Rayos desde el centro (Gris muy suave)
+                    },
+                    grid: { 
+                        color: 'rgba(255, 255, 255, 0.15)', // Los círculos concéntricos de la tela
+                        circular: false // false = Polígono (Tela de araña real) | true = Círculos
+                    },
+                    pointLabels: { 
+                        color: '#eeeeee', // Color de los textos (Pecho, Espalda...)
+                        font: { size: 11, weight: 'bold' } 
+                    },
                     ticks: { 
-                        display: false, 
-                        backdropColor: 'transparent',
+                        display: false, // OCULTAR NÚMEROS para limpiar el gráfico
+                        backdropColor: 'transparent', // Por si decides activarlos, que no tengan fondo gris
                         stepSize: 1
                     },
                     suggestedMin: 0,
-                    // FIX: Forzar un máximo sugerido evita el error de división por cero interno
                     suggestedMax: maxValue > 0 ? maxValue + 1 : 5
                 }
             },
-            plugins: { legend: { display: false } },
+            plugins: { 
+                legend: { display: false },
+                tooltip: {
+                    enabled: true,
+                    backgroundColor: 'rgba(0,0,0,0.9)',
+                    titleColor: '#ff3333',
+                    bodyColor: '#fff'
+                }
+            },
             maintainAspectRatio: false
         }
     });
 }
-
 
 window.loadProfile = async () => {
     document.getElementById('profile-name').innerText = userData.name;
