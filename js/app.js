@@ -1614,6 +1614,17 @@ window.openCoachView = async (uid, u) => {
     else { document.getElementById('coach-user-img').style.display = 'none'; document.getElementById('coach-user-initial').style.display = 'block'; document.getElementById('coach-user-initial').innerText = freshU.name.charAt(0).toUpperCase(); }
     document.getElementById('pending-approval-banner').classList.toggle('hidden', freshU.approved);
     updateCoachPhotoDisplay('front');
+  // ... (inicio de la función openCoachView) ...
+    
+    window.updateCoachPhotoDisplay('front');
+    
+    // Toggles: Añadido 'Photos' al array para activar el switch correspondiente
+    ['Bio','Skinfolds','Measures','Videos', 'Photos'].forEach(k => {
+        const el = document.getElementById(`coach-toggle-${k.toLowerCase()}`);
+        if(el) el.checked = !!u[`show${k}`];
+    });
+
+    // ... (resto de la función openCoachView) ...
     document.getElementById('coach-toggle-bio').checked = !!freshU.showBio; document.getElementById('coach-toggle-skinfolds').checked = !!freshU.showSkinfolds; document.getElementById('coach-toggle-measures').checked = !!freshU.showMeasurements; document.getElementById('coach-toggle-videos').checked = !!freshU.showVideos;
     const dietSel = document.getElementById('coach-diet-select'); dietSel.innerHTML = '<option value="">-- Sin Dieta --</option>';
     AVAILABLE_DIETS.forEach(d => { const opt = new Option(d.name, d.file); if(freshU.dietFile === d.file) opt.selected = true; dietSel.appendChild(opt); });
