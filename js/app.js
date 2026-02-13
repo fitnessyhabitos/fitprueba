@@ -1559,6 +1559,23 @@ window.exportWorkoutHistory = async () => {
     finally { btn.disabled = false; btn.innerHTML = originalContent; btn.style.opacity = "1"; }
 };
 
+// --- FUNCIÓN DE CONTROL DE PESTAÑAS DE PERFIL ---
+window.switchProfileSubTab = (tabName) => {
+    // 1. Quitar clase active de todos los botones
+    document.querySelectorAll('.p-tab-btn').forEach(btn => btn.classList.remove('active'));
+    
+    // 2. Ocultar todos los contenidos
+    document.getElementById('tab-content-progress').classList.add('hidden');
+    document.getElementById('tab-content-history').classList.add('hidden');
+    document.getElementById('tab-content-settings').classList.add('hidden');
+    
+    // 3. Activar el botón seleccionado
+    document.getElementById(`ptab-btn-${tabName}`).classList.add('active');
+    
+    // 4. Mostrar el contenido seleccionado
+    document.getElementById(`tab-content-${tabName}`).classList.remove('hidden');
+};
+
 document.getElementById('btn-register').onclick=async()=>{
     const secretCode = document.getElementById('reg-code').value;
     const tgUser = document.getElementById('reg-telegram')?.value || ""; 
