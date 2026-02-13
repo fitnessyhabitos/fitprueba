@@ -881,19 +881,58 @@ function renderBioChart(canvasId, historyData) {
 }
 
 function renderMuscleRadar(canvasId, stats) {
-    const ctx = document.getElementById(canvasId); if(!ctx) return;
-    if(canvasId === 'userMuscleChart' && userRadarChart) userRadarChart.destroy();
-    if(canvasId === 'coachMuscleChart' && coachRadarChart) coachRadarChart.destroy();
+    const ctx = document.getElementById(canvasId);
+    if(!ctx) return;
+
+    // 1. FIX CRÍTICO: Verificar si ya existe un gráfico en este canvas y destruirlo
+    const existingChart = Chart.getChart(ctx);
+    if (existingChart) {
+        existingChart.destroy();
+    }
+
     const muscleGroups = ["Pecho", "Espalda", "Cuádriceps", "Isquios", "Hombros", "Bíceps", "Tríceps", "Glúteos"];
     const dataValues = muscleGroups.map(m => stats[m] || 0);
-    const newChart = new Chart(ctx, {
+
+    // 2. FIX RangeError: Calculamos el máximo manual para evitar errores si todo es 0
+    const maxValue = Math.max(...dataValues);
+
+    new Chart(ctx, {
         type: 'radar',
-        data: { labels: muscleGroups, datasets: [{ label: 'Volumen Relativo', data: dataValues, backgroundColor: 'rgba(255, 51, 51, 0.4)', borderColor: '#ff3333', pointBackgroundColor: '#ff3333', pointBorderColor: '#fff', pointHoverBackgroundColor: '#fff', pointHoverBorderColor: '#ff3333' }] },
-        options: { scales: { r: { angleLines: { color: '#333' }, grid: { color: '#333' }, pointLabels: { color: '#ccc', font: { size: 10 } }, ticks: { display: false, backdropColor: 'transparent' }, suggestedMin: 0 } }, plugins: { legend: { display: false } }, maintainAspectRatio: false }
+        data: {
+            labels: muscleGroups,
+            datasets: [{
+                label: 'Volumen Relativo',
+                data: dataValues,
+                backgroundColor: 'rgba(255, 51, 51, 0.4)',
+                borderColor: '#ff3333',
+                pointBackgroundColor: '#ff3333',
+                pointBorderColor: '#fff',
+                pointHoverBackgroundColor: '#fff',
+                pointHoverBorderColor: '#ff3333'
+            }]
+        },
+        options: {
+            scales: {
+                r: {
+                    angleLines: { color: '#333' },
+                    grid: { color: '#333' },
+                    pointLabels: { color: '#ccc', font: { size: 10 } },
+                    ticks: { 
+                        display: false, 
+                        backdropColor: 'transparent',
+                        stepSize: 1
+                    },
+                    suggestedMin: 0,
+                    // FIX: Forzar un máximo sugerido evita el error de división por cero interno
+                    suggestedMax: maxValue > 0 ? maxValue + 1 : 5
+                }
+            },
+            plugins: { legend: { display: false } },
+            maintainAspectRatio: false
+        }
     });
-    if(canvasId === 'userMuscleChart') userRadarChart = newChart;
-    if(canvasId === 'coachMuscleChart') coachRadarChart = newChart;
 }
+
 
 window.loadProfile = async () => {
     document.getElementById('profile-name').innerText = userData.name;
