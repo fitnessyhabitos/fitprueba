@@ -884,7 +884,7 @@ function renderMuscleRadar(canvasId, stats) {
     const ctx = document.getElementById(canvasId);
     if(!ctx) return;
 
-    // 1. Limpieza: Destruir gráfico previo si existe
+    // 1. Limpieza previa
     const existingChart = Chart.getChart(ctx);
     if (existingChart) {
         existingChart.destroy();
@@ -892,65 +892,76 @@ function renderMuscleRadar(canvasId, stats) {
 
     const muscleGroups = ["Pecho", "Espalda", "Cuádriceps", "Isquios", "Hombros", "Bíceps", "Tríceps", "Glúteos"];
     const dataValues = muscleGroups.map(m => stats[m] || 0);
+
+    // --- CÁLCULO DINÁMICO DE LA REJILLA (MAGIA AQUÍ) ---
     const maxValue = Math.max(...dataValues);
+
+    // Queremos que siempre haya aprox. 5 anillos visibles, no más.
+    // Si el máx es 50, saltamos de 10 en 10. Si es 5, de 1 en 1.
+    let calculatedStep = Math.ceil(maxValue / 5);
+    if (calculatedStep < 1) calculatedStep = 1;
+
+    // Redondeamos el límite gráfico al siguiente múltiplo limpio
+    const niceMax = Math.ceil(maxValue / calculatedStep) * calculatedStep;
 
     new Chart(ctx, {
         type: 'radar',
         data: {
             labels: muscleGroups,
             datasets: [{
-                label: 'Volumen',
+                label: 'Series',
                 data: dataValues,
-                // Relleno rojo semitransparente (estilo "área de impacto")
-                backgroundColor: 'rgba(255, 51, 51, 0.25)', 
-                // Borde rojo neón sólido
-                borderColor: '#ff3333',
+                backgroundColor: 'rgba(255, 51, 51, 0.25)', // Rojo transparente
+                borderColor: '#ff3333', // Borde rojo neón
                 borderWidth: 2,
-                // Puntos de unión
                 pointBackgroundColor: '#ff3333',
                 pointBorderColor: '#fff',
-                pointHoverBackgroundColor: '#fff',
-                pointHoverBorderColor: '#ff3333'
+                pointRadius: 3, // Puntos visibles en las esquinas
+                pointHoverRadius: 5
             }]
         },
         options: {
             scales: {
                 r: {
-                    // CONFIGURACIÓN DE LA "TELA DE ARAÑA"
                     angleLines: { 
-                        color: 'rgba(255, 255, 255, 0.15)' // Rayos desde el centro (Gris muy suave)
+                        color: 'rgba(255, 255, 255, 0.1)' // Rayos muy sutiles para no ensuciar
                     },
                     grid: { 
-                        color: 'rgba(255, 255, 255, 0.15)', // Los círculos concéntricos de la tela
-                        circular: false // false = Polígono (Tela de araña real) | true = Círculos
+                        color: 'rgba(255, 255, 255, 0.1)', // Anillos muy sutiles
+                        circular: false
                     },
                     pointLabels: { 
-                        color: '#eeeeee', // Color de los textos (Pecho, Espalda...)
-                        font: { size: 11, weight: 'bold' } 
+                        color: '#cccccc', 
+                        font: { size: 10 } 
                     },
                     ticks: { 
-                        display: false, // OCULTAR NÚMEROS para limpiar el gráfico
-                        backdropColor: 'transparent', // Por si decides activarlos, que no tengan fondo gris
-                        stepSize: 1
+                        display: false, // Sin números en el eje para limpieza total
+                        stepSize: calculatedStep, // <--- AQUÍ APLICAMOS EL SALTO DINÁMICO
+                        maxTicksLimit: 6 // Seguridad extra para no saturar
                     },
                     suggestedMin: 0,
-                    suggestedMax: maxValue > 0 ? maxValue + 1 : 5
+                    // Forzamos el máximo calculado para que la gráfica respire
+                    max: niceMax > 0 ? niceMax : 5 
                 }
             },
             plugins: { 
                 legend: { display: false },
                 tooltip: {
                     enabled: true,
-                    backgroundColor: 'rgba(0,0,0,0.9)',
+                    backgroundColor: 'rgba(10, 10, 10, 0.9)',
                     titleColor: '#ff3333',
-                    bodyColor: '#fff'
+                    bodyColor: '#fff',
+                    callbacks: {
+                        label: function(context) {
+                            return context.raw + ' Series';
+                        }
+                    }
                 }
             },
             maintainAspectRatio: false
         }
     });
 }
-
 window.loadProfile = async () => {
     document.getElementById('profile-name').innerText = userData.name;
     if(userData.photo) { document.getElementById('avatar-text').style.display='none'; document.getElementById('avatar-img').src = userData.photo; document.getElementById('avatar-img').style.display='block'; }
