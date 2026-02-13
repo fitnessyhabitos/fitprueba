@@ -154,7 +154,7 @@
                     </div>
                 </div>
 
-                <div class="card">
+                <div class="card" id="user-photos-card">
                     <h3>EVOLUCIÓN FÍSICA</h3>
                     <div class="tip-box">💡 TIP: Usa siempre la misma luz, ropa y lugar.</div>
                     <div class="photo-tabs">
@@ -453,10 +453,10 @@
                 </div>
 
                 <div class="card">
-                     <h3>MAPA MUSCULAR</h3>
-                     <div style="height:300px; width:100%; position:relative;">
+                      <h3>MAPA MUSCULAR</h3>
+                      <div style="height:300px; width:100%; position:relative;">
                         <canvas id="coachMuscleChart"></canvas>
-                     </div>
+                      </div>
                 </div>
 
                 <div id="coach-view-bio" class="card hidden">
@@ -536,6 +536,11 @@
                         <span>Medidas</span>
                         <label class="switch"><input type="checkbox" id="coach-toggle-measures" onchange="window.toggleUserFeature('showMeasurements', this.checked)"><span class="slider"></span></label>
                     </div>
+                    <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                        <span>Habilitar Fotos</span>
+                        <label class="switch"><input type="checkbox" id="coach-toggle-photos" onchange="window.toggleUserFeature('showPhotos', this.checked)"><span class="slider"></span></label>
+                    </div>
+
                     <div style="display:flex; justify-content:space-between; margin-top:10px;">
                         <span>Habilitar Vídeos</span>
                         <label class="switch"><input type="checkbox" id="coach-toggle-videos" onchange="window.toggleUserFeature('showVideos', this.checked)"><span class="slider"></span></label>
