@@ -898,7 +898,7 @@ function renderMuscleRadar(canvasId, stats) {
 
     // Queremos que siempre haya aprox. 5 anillos visibles, no más.
     // Si el máx es 50, saltamos de 10 en 10. Si es 5, de 1 en 1.
-    let calculatedStep = Math.ceil(maxValue / 5);
+    let calculatedStep = Math.ceil(maxValue / 7);
     if (calculatedStep < 1) calculatedStep = 1;
 
     // Redondeamos el límite gráfico al siguiente múltiplo limpio
