@@ -18,7 +18,7 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
-/* FIX DEFINITIVO SCROLL IOS: Evita que el fondo se mueva cuando un modal está abierto */
+/* FIX DEFINITIVO SCROLL IOS */
 html {
     height: -webkit-fill-available;
     overflow: hidden;
@@ -34,11 +34,10 @@ body {
     margin: 0;
     display: flex; 
     flex-direction: column;
-    overflow: hidden; /* El body en sí no debe scrollear, el contenedor interno sí */
+    overflow: hidden;
     position: relative;
 }
 
-/* Clase para bloquear el body cuando el modal está abierto (JS lo controla) */
 body.modal-open {
     position: fixed;
     width: 100%;
@@ -57,20 +56,21 @@ header {
     padding-left: 20px; padding-right: 20px; z-index: 1000; 
 }
 
-/* CONTENEDOR PRINCIPAL FLUIDO CON SCROLL INTERNO */
+/* CONTENEDOR PRINCIPAL - FIX ZONA DE AIRE */
 #main-container { 
     flex: 1; 
     width: 100%;
-    overflow-y: auto; /* El scroll nativo se hace aquí */
-    -webkit-overflow-scrolling: touch; /* Momentum scroll nativo de iOS */
-    padding-top: calc(var(--header-height) + var(--safe-top) + 20px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    /* CAMBIO: Eliminado el + 20px extra para evitar el hueco bajo el header */
+    padding-top: calc(var(--header-height) + var(--safe-top));
     padding-bottom: calc(40px + var(--safe-bottom));
 }
 
 /* UTILIDADES */
 .hidden { display: none !important; }
 
-/* NOTIFICACION FLOTANTE (TOAST) */
+/* NOTIFICACION FLOTANTE */
 #toast-container {
     position: fixed; top: 100px; left: 0; width: 100%; pointer-events: none; z-index: 10001; 
     display: flex; flex-direction: column; align-items: center; gap: 10px;
@@ -102,9 +102,13 @@ header {
 @keyframes blink { 0% { opacity: 1; text-shadow: 0 0 20px var(--accent-color); } 100% { opacity: 0.4; text-shadow: none; } }
 
 /* VISTAS */
-.view-container { padding: 0 15px; display: none; opacity: 0; animation: fadeIn 0.3s forwards; }
+/* CAMBIO: Añadido padding superior aquí para compensar el quitado en main-container */
+.view-container { padding: 20px 15px 0 15px; display: none; opacity: 0; animation: fadeIn 0.3s forwards; }
 .view-container.active { display: block; opacity: 1; }
 @keyframes fadeIn { to { opacity: 1; } }
+
+/* FIX ESPECÍFICO PARA PERFIL: Elimina el padding superior solo en esta vista */
+#profile-view { padding-top: 10px; }
 
 /* COMPONENTES */
 .brand { display: flex; align-items: center; gap: 12px; font-family: var(--font-sport); font-size: 1.3rem; color: white; letter-spacing: 1px; text-transform: uppercase; }
@@ -132,16 +136,52 @@ input:focus { outline: 1px solid var(--accent-color); }
 .btn-done { background-color: rgba(255, 51, 51, 0.3) !important; border: 1px solid var(--accent-color) !important; color: white !important; box-shadow: 0 0 10px rgba(255, 51, 51, 0.4); }
 .btn-float { position: fixed; bottom: 20px; right: 20px; width: 60px; height: 60px; border-radius: 50%; background: var(--accent-color); color: white; display: grid; place-items: center; font-size: 28px; box-shadow: 0 5px 20px rgba(255,51,51,0.6); z-index: 1000; cursor: pointer; }
 
-/* PERFIL - FIX REALIZADO AQUÍ */
+/* PERFIL */
 .profile-header { 
     display: flex; 
     align-items: center; 
     gap: 10px; 
-    margin-bottom: 0; /* ELIMINADO EL MARGEN QUE CREABA EL HUECO */
-    padding-bottom: 15px; /* Añadido padding para mantener aire interno pero no externo */
+    margin-bottom: 15px; 
 }
 .avatar-circle { width: 75px; height: 75px; border-radius: 50%; background: #222; display: flex; align-items: center; justify-content: center; border: 2px solid var(--accent-color); overflow: hidden; box-shadow: 0 0 10px rgba(255,51,51,0.2); flex-shrink: 0; }
 .avatar-circle img { width: 100%; height: 100%; object-fit: cover; }
+
+/* --- ESTILOS PERFIL TABS (STICKY FIX) --- */
+.profile-sub-tabs {
+    display: flex;
+    border-bottom: 1px solid #333;
+    margin-bottom: 20px;
+    background: #000; /* Fondo negro sólido para tapar contenido al scrollear */
+    position: sticky;
+    /* FIX: Se pega justo debajo del header, no en el top 0 */
+    top: calc(var(--header-height) + var(--safe-top) - 1px); 
+    z-index: 10;
+    margin-top: 5px;
+}
+
+.p-tab-btn {
+    flex: 1;
+    text-align: center;
+    padding: 15px 5px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    color: #666;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.p-tab-btn.active {
+    color: white;
+    border-bottom: 2px solid var(--accent-color); 
+    text-shadow: 0 0 8px rgba(255, 51, 51, 0.5);
+}
+
+.profile-tab-content {
+    animation: fadeIn 0.3s forwards;
+}
 
 /* WORKOUT & EXERCISES */
 .muscle-bar-group { margin-bottom: 8px; }
@@ -500,41 +540,4 @@ input:checked + .slider { background-color: var(--accent-color); } input:checked
     font-size: 0.65rem;
     margin-right: 6px;
     font-weight: bold;
-}
-
-/* --- ESTILOS PERFIL TABS (RED EDITION) --- */
-.profile-sub-tabs {
-    display: flex;
-    border-bottom: 1px solid #333;
-    margin-bottom: 20px;
-    background: #000;
-    position: sticky;
-    top: 0;
-    z-index: 10;
-}
-
-.p-tab-btn {
-    flex: 1;
-    text-align: center;
-    padding: 15px 5px;
-    font-size: 0.8rem;
-    font-weight: bold;
-    color: #666;
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
-    transition: all 0.3s ease;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-.p-tab-btn.active {
-    color: white;
-    /* AQUÍ EL CAMBIO: Usamos tu variable de acento (Rojo) */
-    border-bottom: 2px solid var(--accent-color); 
-    /* Efecto Glow Rojo para estilo Cyberpunk/Gym */
-    text-shadow: 0 0 8px rgba(255, 51, 51, 0.5);
-}
-
-.profile-tab-content {
-    animation: fadeIn 0.3s forwards;
 }
