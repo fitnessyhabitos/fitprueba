@@ -46,7 +46,7 @@ let currentNoticeId = null;
 let currentNoticeType = null; 
 
 // Filtros Ranking
-let rankFilterTime = 'all';       
+let rankFilterTime = 'all';        
 let rankFilterGender = 'all';    
 let rankFilterCat = 'kg';        
 
@@ -130,13 +130,13 @@ function initCommunityListener() {
                 if (now - workoutTime < 60 && w.uid !== currentUser.uid) {
                     showToast(`🔥 Alguien terminó: ${w.routine}`);
                     if(document.getElementById('cfg-sound')?.checked) {
-                         if(audioCtx && audioCtx.state !== 'suspended'){
+                          if(audioCtx && audioCtx.state !== 'suspended'){
                             const osc = audioCtx.createOscillator();
                             const g = audioCtx.createGain();
                             osc.connect(g); g.connect(audioCtx.destination);
                             osc.frequency.value = 500; osc.start(); g.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.5);
                             osc.stop(audioCtx.currentTime + 0.5);
-                         }
+                          }
                     }
                 }
             }
@@ -983,6 +983,7 @@ window.loadProfile = async () => {
         if(nudge) nudge.remove();
     }
 
+    // --- VISIBILIDAD DE TARJETAS (Controlado por Coach) ---
     if(userData.rankingOptIn) { document.getElementById('cfg-ranking').checked = true; document.getElementById('top-btn-ranking').classList.remove('hidden'); } 
     else { document.getElementById('cfg-ranking').checked = false; document.getElementById('top-btn-ranking').classList.add('hidden'); }
 
@@ -1002,6 +1003,19 @@ window.loadProfile = async () => {
         document.getElementById('user-measures-section').classList.remove('hidden');
         if(userData.measureHistory && userData.measureHistory.length > 0) renderMeasureChart('chartMeasures', userData.measureHistory);
     } else { document.getElementById('user-measures-section').classList.add('hidden'); }
+    
+    // --- NUEVO: VISIBILIDAD DE FOTOS ---
+    const photosCard = document.getElementById('user-photos-card');
+    if (photosCard) {
+        // Defensive Programming: Si es undefined o true, se muestra. Solo si es false se oculta.
+        if (userData.showPhotos !== false) {
+            photosCard.classList.remove('hidden');
+        } else {
+            photosCard.classList.add('hidden');
+        }
+    }
+    // -----------------------------------
+
     if(userData.restTime) document.getElementById('cfg-rest-time').value = userData.restTime;
     
     if(userData.telegram) {
@@ -1603,7 +1617,21 @@ window.openCoachView = async (uid, u) => {
     else { document.getElementById('coach-user-img').style.display = 'none'; document.getElementById('coach-user-initial').style.display = 'block'; document.getElementById('coach-user-initial').innerText = freshU.name.charAt(0).toUpperCase(); }
     document.getElementById('pending-approval-banner').classList.toggle('hidden', freshU.approved);
     updateCoachPhotoDisplay('front');
-    document.getElementById('coach-toggle-bio').checked = !!freshU.showBio; document.getElementById('coach-toggle-skinfolds').checked = !!freshU.showSkinfolds; document.getElementById('coach-toggle-measures').checked = !!freshU.showMeasurements; document.getElementById('coach-toggle-videos').checked = !!freshU.showVideos;
+    
+    // ZONA DE TOGGLES
+    document.getElementById('coach-toggle-bio').checked = !!freshU.showBio;
+    document.getElementById('coach-toggle-skinfolds').checked = !!freshU.showSkinfolds;
+    document.getElementById('coach-toggle-measures').checked = !!freshU.showMeasurements;
+    document.getElementById('coach-toggle-videos').checked = !!freshU.showVideos;
+
+    // --- NUEVO: TOGGLE FOTOS ---
+    // Si no está definido (legacy), asumimos true para no romper perfiles antiguos.
+    const togglePhotos = document.getElementById('coach-toggle-photos');
+    if (togglePhotos) {
+        togglePhotos.checked = freshU.showPhotos !== false; 
+    }
+    // ----------------------------
+
     const dietSel = document.getElementById('coach-diet-select'); dietSel.innerHTML = '<option value="">-- Sin Dieta --</option>';
     AVAILABLE_DIETS.forEach(d => { const opt = new Option(d.name, d.file); if(freshU.dietFile === d.file) opt.selected = true; dietSel.appendChild(opt); });
     const rList = document.getElementById('coach-assigned-list'); rList.innerHTML = 'Cargando...';
@@ -1680,7 +1708,10 @@ document.getElementById('btn-register').onclick=async()=>{
             telegram: tgUser, 
             approved: false, role: 'athlete', 
             gender:document.getElementById('reg-gender').value, age:parseInt(document.getElementById('reg-age').value), height:parseInt(document.getElementById('reg-height').value), 
-            weightHistory: [], measureHistory: [], skinfoldHistory: [], bioHistory: [], prs: {}, stats: {workouts:0, totalKg:0, totalSets:0, totalReps:0}, muscleStats: {}, joined: serverTimestamp(), showVideos: false, showBio: false
+            weightHistory: [], measureHistory: [], skinfoldHistory: [], bioHistory: [], prs: {}, stats: {workouts:0, totalKg:0, totalSets:0, totalReps:0}, muscleStats: {}, joined: serverTimestamp(), 
+            showVideos: false, 
+            showBio: false,
+            showPhotos: true // NUEVO: Habilitado por defecto
         });
     }catch(e){alert("Error: " + e.message);}
 };
