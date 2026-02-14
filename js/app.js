@@ -1029,9 +1029,34 @@ window.loadProfile = async () => {
     document.getElementById('stat-reps').innerText = userData.stats.totalReps || 0;
     const ctx = document.getElementById('weightChart'); 
     if(chartInstance) chartInstance.destroy();
-    const rawData = userData.weightHistory;
-    const data = (rawData && rawData.length > 0) ? rawData : [70]; 
-    chartInstance = new Chart(ctx, { type:'line', data:{ labels:data.map((_,i)=>`T${i}`), datasets:[{label:'Kg', data:data, borderColor:'#ff3333', backgroundColor:'rgba(255,51,51,0.1)', fill:true, tension:0.4}] }, options:{plugins:{legend:{display:false}}, scales:{x:{display:false},y:{grid:{color:'#333'}}}, maintainAspectRatio:false} });
+    
+    // --- ACTUALIZACIÓN DE LECTURA DE PESO (USER) ---
+    // Detectamos si es formato nuevo (objeto) o viejo (numero)
+    const rawData = userData.weightHistory || [];
+    const labels = rawData.map((d, i) => {
+        if (typeof d === 'object' && d.date) return new Date(d.date.seconds*1000).toLocaleDateString();
+        return `Reg ${i+1}`; // Legacy fallback
+    });
+    const dataValues = rawData.map(d => (typeof d === 'object' && d.weight) ? d.weight : d);
+    const data = (dataValues.length > 0) ? dataValues : [70]; // Placeholder si vacío
+
+    chartInstance = new Chart(ctx, { 
+        type:'line', 
+        data:{ 
+            labels: (dataValues.length > 0) ? labels : ["Inicio"], // Etiquetas correctas
+            datasets:[{label:'Kg', data:data, borderColor:'#ff3333', backgroundColor:'rgba(255,51,51,0.1)', fill:true, tension:0.4}] 
+        }, 
+        options:{
+            plugins:{legend:{display:false}}, 
+            scales:{
+                x:{display:false}, // En el perfil de usuario a veces se prefiere limpio, pero si quieres fechas pon display: true
+                y:{grid:{color:'#333'}}
+            }, 
+            maintainAspectRatio:false
+        } 
+    });
+    // ----------------------------------------------
+
     const histDiv = document.getElementById('user-history-list'); histDiv.innerHTML = "Cargando...";
     try {
         const q = query(collection(db, "workouts"), where("uid", "==", currentUser.uid));
@@ -1075,7 +1100,35 @@ window.contactCoach = () => {
 };
 
 window.savePhotoReminder = async () => { const d = document.getElementById('photo-day').value; const t = document.getElementById('photo-time').value; await updateDoc(doc(db,"users",currentUser.uid), { photoDay:d, photoTime:t }); userData.photoDay = d; userData.photoTime = t; alert("Alarma Guardada"); };
-window.addWeightEntry = async () => { const wStr = prompt("Introduce tu peso (kg):"); if(!wStr) return; const w = parseFloat(wStr.replace(',','.')); if(isNaN(w)) return alert("Número inválido"); let history = userData.weightHistory || []; history.push(w); try { await updateDoc(doc(db,"users",currentUser.uid), {weightHistory: history}); userData.weightHistory = history; window.loadProfile(); alert("✅ Peso Guardado"); } catch(e) { alert("Error al guardar: " + e.message); } };
+
+// --- ACTUALIZACIÓN DE GUARDADO DE PESO (CON FECHA) ---
+window.addWeightEntry = async () => { 
+    const wStr = prompt("Introduce tu peso (kg):"); 
+    if(!wStr) return; 
+    const w = parseFloat(wStr.replace(',','.')); 
+    if(isNaN(w)) return alert("Número inválido"); 
+    
+    // Objeto con fecha
+    const newEntry = { weight: w, date: new Date() };
+
+    // Update local for immediate feedback
+    // Note: Firestore arrayUnion is tricky with objects if dates differ slightly, but for history log is fine.
+    // We update local userData to match structure
+    
+    try { 
+        await updateDoc(doc(db,"users",currentUser.uid), {
+            weightHistory: arrayUnion(newEntry)
+        }); 
+        
+        // Update local state (convert date to firebase-like structure if needed, or simple date for chart)
+        if (!userData.weightHistory) userData.weightHistory = [];
+        userData.weightHistory.push({ weight: w, date: { seconds: Date.now() / 1000 } }); 
+
+        window.loadProfile(); 
+        alert("✅ Peso Guardado"); 
+    } catch(e) { alert("Error al guardar: " + e.message); } 
+};
+// -----------------------------------------------------
 
 function saveLocalWorkout() { localStorage.setItem('fit_active_workout', JSON.stringify(activeWorkout)); }
 window.cancelWorkout = () => { if(confirm("⚠ ¿SEGURO QUE QUIERES CANCELAR?\nSe perderán los datos de este entrenamiento.")) { activeWorkout = null; localStorage.removeItem('fit_active_workout'); if(durationInt) clearInterval(durationInt); switchTab('routines-view'); } };
@@ -1598,6 +1651,7 @@ window.assignRoutine = async () => { const rid = document.getElementById('coach-
 window.assignPlan = async () => { const planId = document.getElementById('coach-plan-select').value; if(!planId) return alert("Selecciona un plan."); try { const planSnap = await getDoc(doc(db, "plans", planId)); const promises = planSnap.data().routines.map(rid => updateDoc(doc(db, "routines", rid), { assignedTo: arrayUnion(selectedUserCoach) })); await Promise.all(promises); alert("✅ Plan asignado."); openCoachView(selectedUserCoach, selectedUserObj); } catch(e) { alert("Error: " + e.message); } };
 window.unassignRoutine = async (rid) => { if(confirm("¿Quitar rutina?")) { await updateDoc(doc(db, "routines", rid), { assignedTo: arrayRemove(selectedUserCoach) }); openCoachView(selectedUserCoach, selectedUserObj); } };
 
+// --- ACTUALIZACION DEL GRAFICO EN COACH VIEW ---
 window.openCoachView = async (uid, u) => {
     selectedUserCoach=uid; 
     const freshSnap = await getDoc(doc(db, "users", uid)); 
@@ -1618,17 +1672,12 @@ window.openCoachView = async (uid, u) => {
     
     updateCoachPhotoDisplay('front');
     
-    // --- VISIBILIDAD DE TARJETAS EN PANEL COACH ---
-    // (Ahora controlamos la visibilidad basándonos en si el usuario tiene activada la opción)
-
-    // 1. Fotos
     const coachPhotoCard = document.getElementById('coach-view-photos');
     if (coachPhotoCard) {
         if (freshU.showPhotos === false) { coachPhotoCard.classList.add('hidden'); } 
         else { coachPhotoCard.classList.remove('hidden'); }
     }
 
-    // 2. Bioimpedancia
     if(freshU.bioHistory && freshU.showBio) { 
         document.getElementById('coach-view-bio').classList.remove('hidden'); 
         renderBioChart('coachBioChart', freshU.bioHistory); 
@@ -1636,33 +1685,28 @@ window.openCoachView = async (uid, u) => {
         document.getElementById('coach-view-bio').classList.add('hidden'); 
     }
 
-    // 3. Pliegues
     if(freshU.skinfoldHistory && freshU.showSkinfolds) { 
         document.getElementById('coach-view-skinfolds').classList.remove('hidden'); 
         const dataF = freshU.skinfoldHistory.map(f => f.fat || 0); 
         const labels = freshU.skinfoldHistory.map(f => new Date(f.date.seconds*1000).toLocaleDateString()); 
         if(coachFatChart) coachFatChart.destroy(); 
-        coachFatChart = new Chart(document.getElementById('coachFatChart'), { type: 'line', data: { labels: labels, datasets: [{ label: '% Grasa', data: dataF, borderColor: '#ffaa00' }] }, options: { maintainAspectRatio: false } }); 
+        coachFatChart = new Chart(document.getElementById('coachFatChart'), { type: 'line', data: { labels: labels, datasets: [{ label: '% Grasa', data: dataF, borderColor: '#ffaa00', tension: 3 }] }, options: { maintainAspectRatio: false } }); 
     } else {
         document.getElementById('coach-view-skinfolds').classList.add('hidden'); 
     }
 
-    // 4. Medidas
     if(freshU.measureHistory && freshU.showMeasurements) { 
         document.getElementById('coach-view-measures').classList.remove('hidden'); 
         renderMeasureChart('coachMeasuresChart', freshU.measureHistory); 
     } else {
         document.getElementById('coach-view-measures').classList.add('hidden'); 
     }
-    // ----------------------------------------------
 
-    // ZONA DE TOGGLES (Interruptores)
     document.getElementById('coach-toggle-bio').checked = !!freshU.showBio;
     document.getElementById('coach-toggle-skinfolds').checked = !!freshU.showSkinfolds;
     document.getElementById('coach-toggle-measures').checked = !!freshU.showMeasurements;
     document.getElementById('coach-toggle-videos').checked = !!freshU.showVideos;
     
-    // Toggle de Fotos (Legacy check)
     const togglePhotos = document.getElementById('coach-toggle-photos');
     if (togglePhotos) {
         togglePhotos.checked = freshU.showPhotos !== false; 
@@ -1682,7 +1726,43 @@ window.openCoachView = async (uid, u) => {
     renderMuscleRadar('coachMuscleChart', freshU.muscleStats || {});
 
     const st = freshU.stats || {}; document.getElementById('coach-stats-text').innerHTML = `<div class="stat-pill"><b>${st.workouts||0}</b><span>ENTRENOS</span></div><div class="stat-pill"><b>${(st.totalKg/1000||0).toFixed(1)}t</b><span>CARGA</span></div><div class="stat-pill"><b>${st.totalReps||0}</b><span>REPS</span></div>`;
-    if(coachChart) coachChart.destroy(); const wData = freshU.weightHistory || [70]; coachChart = new Chart(document.getElementById('coachWeightChart'), { type:'line', data: { labels:wData.map((_,i)=>i+1), datasets:[{label:'Kg', data:wData, borderColor:'#ff3333'}] }, options:{ maintainAspectRatio: false}});
+    
+    // --- ACTUALIZACION DEL GRAFICO (FECHAS CORRECTAS) ---
+    if(coachChart) coachChart.destroy(); 
+    
+    const rawData = freshU.weightHistory || [];
+    // Mapeo inteligente: detecta si es objeto {weight, date} o solo numero
+    const labels = rawData.map((d, i) => {
+        if (typeof d === 'object' && d.date) return new Date(d.date.seconds*1000).toLocaleDateString();
+        return `Reg ${i+1}`; // Legacy fallback
+    });
+    const dataValues = rawData.map(d => (typeof d === 'object' && d.weight) ? d.weight : d);
+    const data = (dataValues.length > 0) ? dataValues : [70]; // Placeholder si vacío
+
+    coachChart = new Chart(document.getElementById('coachWeightChart'), { 
+        type:'line', 
+        data: { 
+            labels: (dataValues.length > 0) ? labels : ["Inicio"], 
+            datasets:[{
+                label:'Kg', 
+                data:data, 
+                borderColor:'#ff3333',
+                backgroundColor:'rgba(255, 51, 51, 0.1)', 
+                fill: true,
+                tension: 0.4
+            }] 
+        }, 
+        options:{ 
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } }, 
+            scales: {
+                x: { display: true, ticks: { color: '#888' } }, // EJE X VISIBLE AHORA
+                y: { grid: { color: '#333' } } 
+            }
+        }
+    });
+    // ---------------------------------------------------------
+
     const hList = document.getElementById('coach-history-list'); hList.innerHTML = 'Cargando...';
     const wSnap = await getDocs(query(collection(db,"workouts"), where("uid","==",uid))); hList.innerHTML = wSnap.empty ? 'Sin datos.' : '';
     wSnap.docs.map(doc => ({id: doc.id, ...doc.data()})).sort((a,b) => b.date - a.date).slice(0, 10).forEach(d => {
@@ -1690,6 +1770,7 @@ window.openCoachView = async (uid, u) => {
         hList.innerHTML += `<div class="history-row" style="grid-template-columns: 60px 1fr 30px 80px;"><div>${date}</div><div style="overflow:hidden; text-overflow:ellipsis;">${d.routine}</div><div>${d.rpe === 'Suave' ? '🟢' : (d.rpe === 'Duro' ? '🟠' : '🔴')}</div><button class="btn-small btn-outline" onclick="viewWorkoutDetails('${d.routine}', '${encodeURIComponent(JSON.stringify(d.details))}', '${encodeURIComponent(d.note||"")}')">Ver</button></div>`;
     });
 }
+// ---------------------------------------------
 
 window.exportWorkoutHistory = async () => {
     const btn = event.currentTarget; const originalContent = btn.innerHTML;
