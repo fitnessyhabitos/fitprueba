@@ -1616,21 +1616,33 @@ window.openCoachView = async (uid, u) => {
     if(freshU.photo) { document.getElementById('coach-user-img').src = freshU.photo; document.getElementById('coach-user-img').style.display = 'block'; document.getElementById('coach-user-initial').style.display = 'none'; }
     else { document.getElementById('coach-user-img').style.display = 'none'; document.getElementById('coach-user-initial').style.display = 'block'; document.getElementById('coach-user-initial').innerText = freshU.name.charAt(0).toUpperCase(); }
     document.getElementById('pending-approval-banner').classList.toggle('hidden', freshU.approved);
+    
     updateCoachPhotoDisplay('front');
     
-    // ZONA DE TOGGLES
+    // --- NUEVO: VISIBILIDAD CARD FOTOS COACH ---
+    // Si el interruptor está apagado, ocultamos la tarjeta de visualización de fotos en el panel coach
+    const coachPhotoCard = document.getElementById('coach-view-photos');
+    if (coachPhotoCard) {
+        if (freshU.showPhotos === false) {
+            coachPhotoCard.classList.add('hidden');
+        } else {
+            coachPhotoCard.classList.remove('hidden');
+        }
+    }
+    // -------------------------------------------
+
+    // ZONA DE TOGGLES (Interruptores)
     document.getElementById('coach-toggle-bio').checked = !!freshU.showBio;
     document.getElementById('coach-toggle-skinfolds').checked = !!freshU.showSkinfolds;
     document.getElementById('coach-toggle-measures').checked = !!freshU.showMeasurements;
     document.getElementById('coach-toggle-videos').checked = !!freshU.showVideos;
-
-    // --- NUEVO: TOGGLE FOTOS ---
-    // Si no está definido (legacy), asumimos true para no romper perfiles antiguos.
+    
+    // Toggle de Fotos
     const togglePhotos = document.getElementById('coach-toggle-photos');
     if (togglePhotos) {
+        // Defensive Programming: Si es legacy (undefined), asumimos true.
         togglePhotos.checked = freshU.showPhotos !== false; 
     }
-    // ----------------------------
 
     const dietSel = document.getElementById('coach-diet-select'); dietSel.innerHTML = '<option value="">-- Sin Dieta --</option>';
     AVAILABLE_DIETS.forEach(d => { const opt = new Option(d.name, d.file); if(freshU.dietFile === d.file) opt.selected = true; dietSel.appendChild(opt); });
@@ -1642,6 +1654,8 @@ window.openCoachView = async (uid, u) => {
     const allPlansSnap = await getDocs(collection(db, "plans")); allPlansSnap.forEach(p => pSelect.add(new Option(p.data().name, p.id)));
     const assigned = allRoutinesCache.filter(r => (r.assignedTo || []).includes(uid)); rList.innerHTML = assigned.length ? '' : 'Ninguna rutina.';
     assigned.forEach(r => { const div = document.createElement('div'); div.className = "assigned-routine-item"; div.innerHTML = `<span>${r.name}</span><button style="background:none;border:none;color:#f55;font-weight:bold;cursor:pointer;" onclick="window.unassignRoutine('${r.id}')">❌</button>`; rList.appendChild(div); });
+    
+    // Visibilidad de otras tarjetas según datos
     if(freshU.bioHistory) { document.getElementById('coach-view-bio').classList.remove('hidden'); renderBioChart('coachBioChart', freshU.bioHistory); }
     if(freshU.skinfoldHistory) { document.getElementById('coach-view-skinfolds').classList.remove('hidden'); const dataF = freshU.skinfoldHistory.map(f => f.fat || 0); const labels = freshU.skinfoldHistory.map(f => new Date(f.date.seconds*1000).toLocaleDateString()); if(coachFatChart) coachFatChart.destroy(); coachFatChart = new Chart(document.getElementById('coachFatChart'), { type: 'line', data: { labels: labels, datasets: [{ label: '% Grasa', data: dataF, borderColor: '#ffaa00' }] }, options: { maintainAspectRatio: false } }); }
     if(freshU.measureHistory) { document.getElementById('coach-view-measures').classList.remove('hidden'); renderMeasureChart('coachMeasuresChart', freshU.measureHistory); }
@@ -1711,7 +1725,7 @@ document.getElementById('btn-register').onclick=async()=>{
             weightHistory: [], measureHistory: [], skinfoldHistory: [], bioHistory: [], prs: {}, stats: {workouts:0, totalKg:0, totalSets:0, totalReps:0}, muscleStats: {}, joined: serverTimestamp(), 
             showVideos: false, 
             showBio: false,
-            showPhotos: true // NUEVO: Habilitado por defecto
+            showPhotos: false // NUEVO: Deshabilitado por defecto para nuevos usuarios
         });
     }catch(e){alert("Error: " + e.message);}
 };
