@@ -132,8 +132,14 @@ input:focus { outline: 1px solid var(--accent-color); }
 .btn-done { background-color: rgba(255, 51, 51, 0.3) !important; border: 1px solid var(--accent-color) !important; color: white !important; box-shadow: 0 0 10px rgba(255, 51, 51, 0.4); }
 .btn-float { position: fixed; bottom: 20px; right: 20px; width: 60px; height: 60px; border-radius: 50%; background: var(--accent-color); color: white; display: grid; place-items: center; font-size: 28px; box-shadow: 0 5px 20px rgba(255,51,51,0.6); z-index: 1000; cursor: pointer; }
 
-/* PERFIL */
-.profile-header { display: flex; align-items: center; gap: 10px; margin-bottom: 25px; }
+/* PERFIL - FIX REALIZADO AQUÍ */
+.profile-header { 
+    display: flex; 
+    align-items: center; 
+    gap: 10px; 
+    margin-bottom: 0; /* ELIMINADO EL MARGEN QUE CREABA EL HUECO */
+    padding-bottom: 15px; /* Añadido padding para mantener aire interno pero no externo */
+}
 .avatar-circle { width: 75px; height: 75px; border-radius: 50%; background: #222; display: flex; align-items: center; justify-content: center; border: 2px solid var(--accent-color); overflow: hidden; box-shadow: 0 0 10px rgba(255,51,51,0.2); flex-shrink: 0; }
 .avatar-circle img { width: 100%; height: 100%; object-fit: cover; }
 
@@ -148,10 +154,8 @@ input:focus { outline: 1px solid var(--accent-color); }
 .stat-num { 
     font-size: 1.5rem; 
     font-weight: 900; 
-    /* CAMBIO: Usamos tu variable de rojo */
     color: var(--accent-color); 
     display: block; 
-    /* Opcional: Un pequeño brillo rojo para que destaque más en fondo negro */
     text-shadow: 0 0 8px rgba(255, 51, 51, 0.4);
 }
 .stat-label { font-size: 0.7rem; color: #888; text-transform: uppercase; }
@@ -220,7 +224,14 @@ input:checked + .slider { background-color: var(--accent-color); } input:checked
 .admin-tabs { display: flex; gap: 10px; margin-bottom: 15px; }
 .admin-tab-btn { flex: 1; background: #222; border: 1px solid #444; color: #888; padding: 10px; border-radius: 8px; font-weight: bold; cursor: pointer; text-align: center; font-size: 0.8rem; }
 .admin-tab-btn.active { background: var(--accent-color); color: white; border-color: var(--accent-color); }
-.admin-user-row { padding: 15px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+.admin-user-row {
+    display: grid;
+    grid-template-columns: 45px 1fr 90px;
+    gap: 12px;
+    padding: 12px;
+    align-items: center;
+    border-bottom: 1px solid #222;
+}
 .admin-user-row.is-coach { border-left: 3px solid #ffaa00; background: rgba(255, 170, 0, 0.05); }
 .admin-user-row.is-me { border-left: 3px solid #00ff88; background: rgba(0, 255, 136, 0.05); }
 .assigned-routine-item { background: #222; padding: 10px; margin-bottom: 5px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; border:1px solid #333; }
@@ -344,14 +355,6 @@ input:checked + .slider { background-color: var(--accent-color); } input:checked
 /* --- NUEVOS ESTILOS: AVATARES, NOTAS Y RANKING --- */
 
 /* 1. Lista de Atletas Compacta */
-.admin-user-row {
-    display: grid;
-    grid-template-columns: 45px 1fr 90px; /* Ajustado para acomodar los botones */
-    gap: 12px;
-    padding: 12px;
-    align-items: center;
-    border-bottom: 1px solid #222;
-}
 .mini-avatar {
     width: 45px; height: 45px;
     border-radius: 50%;
