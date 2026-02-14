@@ -1600,7 +1600,6 @@ window.unassignRoutine = async (rid) => { if(confirm("¿Quitar rutina?")) { awai
 
 window.openCoachView = async (uid, u) => {
     selectedUserCoach=uid; 
-    // Siempre hacer fetch fresco para asegurar datos actualizados
     const freshSnap = await getDoc(doc(db, "users", uid)); 
     const freshU = freshSnap.data(); 
     selectedUserObj = freshU; 
@@ -1619,17 +1618,43 @@ window.openCoachView = async (uid, u) => {
     
     updateCoachPhotoDisplay('front');
     
-    // --- NUEVO: VISIBILIDAD CARD FOTOS COACH ---
-    // Si el interruptor está apagado, ocultamos la tarjeta de visualización de fotos en el panel coach
+    // --- VISIBILIDAD DE TARJETAS EN PANEL COACH ---
+    // (Ahora controlamos la visibilidad basándonos en si el usuario tiene activada la opción)
+
+    // 1. Fotos
     const coachPhotoCard = document.getElementById('coach-view-photos');
     if (coachPhotoCard) {
-        if (freshU.showPhotos === false) {
-            coachPhotoCard.classList.add('hidden');
-        } else {
-            coachPhotoCard.classList.remove('hidden');
-        }
+        if (freshU.showPhotos === false) { coachPhotoCard.classList.add('hidden'); } 
+        else { coachPhotoCard.classList.remove('hidden'); }
     }
-    // -------------------------------------------
+
+    // 2. Bioimpedancia
+    if(freshU.bioHistory && freshU.showBio) { 
+        document.getElementById('coach-view-bio').classList.remove('hidden'); 
+        renderBioChart('coachBioChart', freshU.bioHistory); 
+    } else {
+        document.getElementById('coach-view-bio').classList.add('hidden'); 
+    }
+
+    // 3. Pliegues
+    if(freshU.skinfoldHistory && freshU.showSkinfolds) { 
+        document.getElementById('coach-view-skinfolds').classList.remove('hidden'); 
+        const dataF = freshU.skinfoldHistory.map(f => f.fat || 0); 
+        const labels = freshU.skinfoldHistory.map(f => new Date(f.date.seconds*1000).toLocaleDateString()); 
+        if(coachFatChart) coachFatChart.destroy(); 
+        coachFatChart = new Chart(document.getElementById('coachFatChart'), { type: 'line', data: { labels: labels, datasets: [{ label: '% Grasa', data: dataF, borderColor: '#ffaa00' }] }, options: { maintainAspectRatio: false } }); 
+    } else {
+        document.getElementById('coach-view-skinfolds').classList.add('hidden'); 
+    }
+
+    // 4. Medidas
+    if(freshU.measureHistory && freshU.showMeasurements) { 
+        document.getElementById('coach-view-measures').classList.remove('hidden'); 
+        renderMeasureChart('coachMeasuresChart', freshU.measureHistory); 
+    } else {
+        document.getElementById('coach-view-measures').classList.add('hidden'); 
+    }
+    // ----------------------------------------------
 
     // ZONA DE TOGGLES (Interruptores)
     document.getElementById('coach-toggle-bio').checked = !!freshU.showBio;
@@ -1637,10 +1662,9 @@ window.openCoachView = async (uid, u) => {
     document.getElementById('coach-toggle-measures').checked = !!freshU.showMeasurements;
     document.getElementById('coach-toggle-videos').checked = !!freshU.showVideos;
     
-    // Toggle de Fotos
+    // Toggle de Fotos (Legacy check)
     const togglePhotos = document.getElementById('coach-toggle-photos');
     if (togglePhotos) {
-        // Defensive Programming: Si es legacy (undefined), asumimos true.
         togglePhotos.checked = freshU.showPhotos !== false; 
     }
 
@@ -1654,11 +1678,6 @@ window.openCoachView = async (uid, u) => {
     const allPlansSnap = await getDocs(collection(db, "plans")); allPlansSnap.forEach(p => pSelect.add(new Option(p.data().name, p.id)));
     const assigned = allRoutinesCache.filter(r => (r.assignedTo || []).includes(uid)); rList.innerHTML = assigned.length ? '' : 'Ninguna rutina.';
     assigned.forEach(r => { const div = document.createElement('div'); div.className = "assigned-routine-item"; div.innerHTML = `<span>${r.name}</span><button style="background:none;border:none;color:#f55;font-weight:bold;cursor:pointer;" onclick="window.unassignRoutine('${r.id}')">❌</button>`; rList.appendChild(div); });
-    
-    // Visibilidad de otras tarjetas según datos
-    if(freshU.bioHistory) { document.getElementById('coach-view-bio').classList.remove('hidden'); renderBioChart('coachBioChart', freshU.bioHistory); }
-    if(freshU.skinfoldHistory) { document.getElementById('coach-view-skinfolds').classList.remove('hidden'); const dataF = freshU.skinfoldHistory.map(f => f.fat || 0); const labels = freshU.skinfoldHistory.map(f => new Date(f.date.seconds*1000).toLocaleDateString()); if(coachFatChart) coachFatChart.destroy(); coachFatChart = new Chart(document.getElementById('coachFatChart'), { type: 'line', data: { labels: labels, datasets: [{ label: '% Grasa', data: dataF, borderColor: '#ffaa00' }] }, options: { maintainAspectRatio: false } }); }
-    if(freshU.measureHistory) { document.getElementById('coach-view-measures').classList.remove('hidden'); renderMeasureChart('coachMeasuresChart', freshU.measureHistory); }
     
     renderMuscleRadar('coachMuscleChart', freshU.muscleStats || {});
 
