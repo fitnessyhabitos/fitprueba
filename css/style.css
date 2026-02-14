@@ -62,7 +62,7 @@ header {
     width: 100%;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    /* CAMBIO: Eliminado el + 20px extra para evitar el hueco bajo el header */
+    /* CAMBIO CRÍTICO: Eliminado el espacio extra. Solo la altura del header. */
     padding-top: calc(var(--header-height) + var(--safe-top));
     padding-bottom: calc(40px + var(--safe-bottom));
 }
@@ -102,13 +102,16 @@ header {
 @keyframes blink { 0% { opacity: 1; text-shadow: 0 0 20px var(--accent-color); } 100% { opacity: 0.4; text-shadow: none; } }
 
 /* VISTAS */
-/* CAMBIO: Añadido padding superior aquí para compensar el quitado en main-container */
-.view-container { padding: 20px 15px 0 15px; display: none; opacity: 0; animation: fadeIn 0.3s forwards; }
+/* CAMBIO: Padding-top a 0 por defecto para evitar doble hueco */
+.view-container { padding: 0 15px; display: none; opacity: 0; animation: fadeIn 0.3s forwards; }
 .view-container.active { display: block; opacity: 1; }
 @keyframes fadeIn { to { opacity: 1; } }
 
-/* FIX ESPECÍFICO PARA PERFIL: Elimina el padding superior solo en esta vista */
-#profile-view { padding-top: 10px; }
+/* FIX ESPECÍFICO PERFIL */
+#profile-view {
+    /* Pequeño margen interno para que el avatar no se corte con el header */
+    padding-top: 15px; 
+}
 
 /* COMPONENTES */
 .brand { display: flex; align-items: center; gap: 12px; font-family: var(--font-sport); font-size: 1.3rem; color: white; letter-spacing: 1px; text-transform: uppercase; }
@@ -141,7 +144,7 @@ input:focus { outline: 1px solid var(--accent-color); }
     display: flex; 
     align-items: center; 
     gap: 10px; 
-    margin-bottom: 15px; 
+    margin-bottom: 10px; /* Reducido al mínimo */
 }
 .avatar-circle { width: 75px; height: 75px; border-radius: 50%; background: #222; display: flex; align-items: center; justify-content: center; border: 2px solid var(--accent-color); overflow: hidden; box-shadow: 0 0 10px rgba(255,51,51,0.2); flex-shrink: 0; }
 .avatar-circle img { width: 100%; height: 100%; object-fit: cover; }
@@ -153,10 +156,9 @@ input:focus { outline: 1px solid var(--accent-color); }
     margin-bottom: 20px;
     background: #000; /* Fondo negro sólido para tapar contenido al scrollear */
     position: sticky;
-    /* FIX: Se pega justo debajo del header, no en el top 0 */
-    top: calc(var(--header-height) + var(--safe-top) - 1px); 
+    /* Se pega al top del contenedor scrolleable (que empieza tras el header) */
+    top: -1px; 
     z-index: 10;
-    margin-top: 5px;
 }
 
 .p-tab-btn {
